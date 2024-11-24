@@ -1,0 +1,60 @@
+\ Quoted string recognizer
+
+\ Authors: Anton Ertl, Bernd Paysan
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+
+\ This file is part of Gforth.
+
+\ Gforth is free software; you can redistribute it and/or
+\ modify it under the terms of the GNU General Public License
+\ as published by the Free Software Foundation, either version 3
+\ of the License, or (at your option) any later version.
+
+\ This program is distributed in the hope that it will be useful,
+\ but WITHOUT ANY WARRANTY; without even the implied warranty of
+\ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+\ GNU General Public License for more details.
+
+\ You should have received a copy of the GNU General Public License
+\ along with this program. If not, see http://www.gnu.org/licenses/.
+
+s" Scanned string not in input buffer" exception >r
+
+: ?in-inbuf ( addr u -- )
+    bounds source bounds swap 1+ 2tuck within >r within r> and
+    0= IF  [ r> ]L throw  THEN ;
+
+: scan-string ( addr u -- addr' u' )
+    2dup ?in-inbuf
+    drop source drop - 1+ >in ! \"-parse  save-mem ;
+
+: slit,  postpone sliteral ;
+
+' scan-string
+:noname scan-string slit, ;
+:noname scan-string slit, postpone 2lit, ;
+translate: scan-translate-string
+
+: rec-string ( addr u -- addr u' scan-translate-string | 0 ) \ gforth-experimental
+    \G Convert strings enclosed in double quotes into string literals,
+    \G escapes are treated as in @code{S\"}.
+    2dup s\" \"" string-prefix?
+    IF    ['] scan-translate-string
+    ELSE  2drop 0  THEN ;
+
+' rec-string action-of forth-recognize >back
+
+0 [IF] \ dot-quoted strings, we don't need them
+: .slit slit, postpone type ;
+:noname scan-string type ;
+:noname scan-string .slit ;
+:noname scan-string slit, ]] 2lit, type [[ ; >postponer translate: translate-."
+' translate-." Constant rectype-." \ gforth-obsolete
+
+: rec-."  ( addr u -- addr u' translate-." | 0 )
+    2dup ".\"" string-prefix?
+    IF    ['] scan-translate-."
+    ELSE  2drop 0  THEN ;
+
+' rec-." action-of forth-recognize >back
+[THEN]
