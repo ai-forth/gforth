@@ -57,7 +57,7 @@ version has been tested successfully on the following platforms:
 
 ## Installation
 
-Read `INSTALL` for installation instructions from tarball,\
+Read [INSTALL](/INSTALL.md) for installation instructions from tarball,\
 or `INSTALL.md` for from git,\
 or `INSTALL.BINDIST` if you have a binary package distributed as `.tar.xz` file.\
 If you received a self-installing executable,
