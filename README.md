@@ -63,30 +63,8 @@ Use the following sequence to build sources:
 git clone https://github.com/ai-forth/gforth
 cd gforth
 ./install-deps.sh
-./autogen.sh
-./configure
-make
-sudo make install
 ```
-
-## Installation
-
-Read `INSTALL` for installation instructions from tarball,\
-or `INSTALL.md` for from git,\
-or `INSTALL.BINDIST` if you have a binary package distributed as `.tar.xz` file.\
-If you received a self-installing executable,
-just run it and follow the instructions.
-
-To start the system, just say `gforth` (after installing it).
-
-## Download
-
-You can find new versions of Gforth at\
-[www.complang.tuwien.ac.at/forth/gforth/](https://www.complang.tuwien.ac.at/forth/gforth/)\
-and current snapshots on\
-[www.complang.tuwien.ac.at/forth/gforth/Snapshots/current/](https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/current/)\
-or at\
-[ftp://ftp.gnu.org/gnu/gforth/](ftp://ftp.gnu.org/gnu/gforth/)
+...and gforth will be installed. To start the system, just say `gforth`.
 
 ## Files
 
