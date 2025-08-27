@@ -1,7 +1,7 @@
 \ compiler definitions						14sep97jaw
 
 \ Authors: Bernd Paysan, Anton Ertl, Neal Crook, Jens Wilke, David Kühling, Gerald Wodni
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -42,7 +42,7 @@
     \G Gforth you can deallocate anything in this way but named words.
     \G The system does not check this restriction.
     here +
-    dup 1- usable-dictionary-end forthstart within -8 and throw
+    dup 1- usable-dictionary-end section-start @ within -8 and throw
     ->here ;
 [THEN]
 
@@ -53,7 +53,7 @@
     \G Reserve data space for one char and store @i{c} in the space.
     1 chars small-allot c! ;
 
-: 2,	( w1 w2 -- ) \ gforth
+: 2,	( w1 w2 -- ) \ gforth two-comma
     \G Reserve data space for two cells and store the double @i{w1
     \G w2} there, @i{w2} first (lower address).
     2 cells small-allot 2! ;
@@ -78,7 +78,7 @@
     here dup faligned >align ;
 
 : maxalign ( -- ) \ gforth
-    \G Align data-space pointer for all alignment requirements.
+    \G Align data-space pointer for all Forth alignment requirements.
     here dup maxaligned >align ;
 
 \ the code field is aligned if its body is maxaligned
@@ -86,7 +86,7 @@
 \G Align data-space pointer for code field requirements (i.e., such
 \G that the corresponding body is maxaligned).
 
-' , alias A, ( addr -- ) \ gforth
+' , alias A, ( addr -- ) \ gforth a-comma
 \g Reserve data space for one cell, and store @i{addr} there.  For our
 \g cross-compiler this provides the type information necessary for a
 \g relocatable image; normally, though, this is equivalent to
@@ -106,8 +106,9 @@
     \g aligned, precede @code{mem,} with an alignment word.
     here over allot swap move ;
 
-: string, ( c-addr u -- ) \ gforth
-    \G puts down string as cstring
+: string, ( c-addr u -- ) \ gforth string-comma
+    \G Reserve @i{u}+1 bytes of dictionary space and store the string
+    \G @i{c-addr u} there as counted string.
     dup c, mem, ;
 
 [IFDEF] prelude-mask
@@ -143,12 +144,10 @@ variable next-prelude
 Defer check-shadow ( addr u wid -- )
 :noname drop 2drop ; is check-shadow
 
-:noname drop lastnt @ (to) ;
-opt: ?fold1 drop lastnt @ (to), ;
 :noname drop lastnt @ ;
 ' noop Alias recurse ( ... -- ... ) \ core
 \g Alias to the current definition.
-unlock set->int set-to lock
+unlock set->int ghost s-to gset-to lock
 \ this is the alias pointer in the recurse header, named lastnt.
 \ changing lastnt now changes where recurse aliases to
 \ it's always an alias of the current definition
@@ -166,6 +165,8 @@ unlock set->int set-to lock
     ['] named>string set-name>string
     ['] named>link set-name>link ;
 
+Variable header-flags \ gforth-experimental
+
 : namehm, ( -- )
     here xt-location drop
     0 A, hmtemplate , here lastnt ! ; \ add location stamps on hm+cf
@@ -173,7 +174,7 @@ unlock set->int set-to lock
     \G compile the named part of a header
     name-too-long?
     dup here + dup cfaligned >align
-    tuck mem, ,
+    tuck mem, 0 header-flags !@ or ,
     get-current 1 or A,
     \ link field; before revealing, it contains the
     \ tagged reveal-into wordlist
@@ -241,49 +242,27 @@ variable nextname$
 : noname ( -- ) \ gforth
     \g The next defined word will be anonymous. The defining word will
     \g leave the input stream alone. The xt of the defined word will
-    \g be given by @code{latestxt}.
+    \g be given by @code{latestxt}, its nt by @code{latestnt}
+    \g (@pxref{Name token}).
     ['] noname-header IS header-name, ;
 
 : latestnt ( -- nt ) \ gforth
-    \G @i{nt} is the name token of the last word defined.
+    \G @i{nt} is the name token of the most recent word (named or
+    \G unnamed) defined in the current section.
     \ The main purpose of this word is to get the nt of words defined using noname
     lastnt @ ;
+
 : latestxt ( -- xt ) \ gforth
-    \G @i{xt} is the execution token of the last word defined.
+    \G @i{xt} is the execution token of the most recent word defined in the current section.
     \ The main purpose of this word is to get the xt of words defined using noname
     lastnt @ name>interpret ;
 
 : latest ( -- nt ) \ gforth
-\G @var{nt} is the name token of the last word defined; it is 0 if the
-\G last word has no name.
+\G @var{nt} is the name token of the last word defined in the current
+\G section.  @var{nt} is 0 if the last word has no name.
     lastnt @ dup name>string d0<> and ;
 
 \ \ literals							17dec92py
-
-: Literal  ( compilation n -- ; run-time -- n ) \ core
-    \G Compilation semantics: compile the run-time semantics.@*
-    \G Run-time Semantics: push @i{n}.@*
-    \G Interpretation semantics: undefined.
-    >lits ; \ threading-method 1 = IF  postpone lit ,  ELSE  >lits  THEN ;
-immediate restrict
-
-: 2Literal ( compilation w1 w2 -- ; run-time  -- w1 w2 ) \ double two-literal
-    \G Compile appropriate code such that, at run-time, @i{w1 w2} are
-    \G placed on the stack. Interpretation semantics are undefined.
-    swap postpone Literal  postpone Literal ; immediate restrict
-
-: ALiteral ( compilation addr -- ; run-time -- addr ) \ gforth
-    \g Works like @code{literal}, but (when used in cross-compiled
-    \g code) tells the cross-compiler that the literal is an address.
-    postpone Literal ; immediate restrict
-
-: ?parse-name ( -- addr u )
-    \G same as parse-name, but fails with an error
-    parse-name dup 0= #-16 and throw ;
-
-\ \ threading							17mar93py
-
-Variable litstack
 
 : >lits ( x -- ) litstack >stack ;
 : lits> ( -- x ) litstack stack> ;
@@ -294,6 +273,30 @@ Variable litstack
     r> free throw ;
 : clear-litstack ( -- )
     0 litstack set-stack ;
+
+: Literal  ( compilation n -- ; run-time -- n ) \ core
+    \G Compilation semantics: ( @i{n --} ) compile the run-time semantics.@*
+    \G Run-time Semantics: ( @i{ -- n} ).@*
+    \G Interpretation semantics: not defined in the standard.
+    >lits ;
+immediate restrict
+
+: 2Literal ( compilation w1 w2 -- ; run-time  -- w1 w2 ) \ double two-literal
+    \G Compilation semantics: ( @i{w1 w2 --} ) compile the run-time semantics.@*
+    \G Run-time Semantics: ( @i{ -- w1 w2} ).@*
+    \G Interpretation semantics: not defined in the standard.
+    swap >lits >lits ; immediate restrict
+
+: ALiteral ( compilation addr -- ; run-time -- addr ) \ gforth
+    \g Works like @code{literal}, but (when used in cross-compiled
+    \g code) tells the cross-compiler that the literal is an address.
+    >lits ; immediate restrict
+
+: ?parse-name ( -- addr u )
+    \G same as parse-name, but fails with an error
+    parse-name dup 0= #-16 and throw ;
+
+\ \ threading							17mar93py
 
 : cfa,     ( code-address -- )  \ gforth-internal	cfa-comma
     here only-code-address! ;
@@ -365,9 +368,7 @@ has? primcentric [IF]
     ['] default-name>comp set->comp ;
 
 : [']  ( compilation. "name" -- ; run-time. -- xt ) \ core      bracket-tick
-    \g @i{xt} represents @i{name}'s interpretation
-    \g semantics. Perform @code{-14 throw} if the word has no
-    \g interpretation semantics.
+    \g @i{xt} represents @i{name}'s interpretation semantics.
     ' postpone Literal ; immediate restrict
 
 : COMP'    ( "name" -- w xt ) \ gforth  comp-tick
@@ -413,8 +414,8 @@ include ./recognizer.fs
 
 : imm>comp  name>interpret ['] execute ;
 : immediate ( -- ) \ core
-    \G Make the compilation semantics of a word be to @code{execute}
-    \G the execution semantics.
+    \G Change the compilation semantics of a word to be the same as
+    \G its interpretation semantics.
     ['] imm>comp set->comp ;
 
 : restrict ( -- ) \ gforth
@@ -443,8 +444,8 @@ include ./recognizer.fs
 : s>int ( nt -- xt )  >body @ name>interpret ;
 : s>comp ( nt -- xt1 xt2 )  >body @ name>compile ;
 : s-to ( val operation nt -- )
-    >body @ (to) ;
-opt: ( xt -- ) ?fold1 >body @ (to), ;
+    name>interpret (to) ;
+fold1: name>interpret (to), ;
 : s-compile, ( xt -- )  >body @ compile, ;
 
 : synonym, ( nt int comp -- ) \ gforth-internal
@@ -467,7 +468,8 @@ $BF000000. 1 cells 8 = [IF] #32 dlshift [THEN] dValue synonym-mask \ do not copy
 : Synonym ( "name" "oldname" -- ) \ tools-ext
     \G Define @i{name} to behave the same way as @i{oldname}: Same
     \G interpretation semantics, same compilation semantics, same
-    \G @code{to}/@code{defer!} and @code{defer@@} semantics.
+    \G @word{to}, @word{+to}, @word{is}, @word{action-of} and
+    \G @word{addr} semantics.
     ['] parse-name create-from
     ?parse-name find-name ?found
     dup >f+c @ synonym-mask and latest >f+c +!
@@ -481,13 +483,14 @@ $BF000000. 1 cells 8 = [IF] #32 dlshift [THEN] dValue synonym-mask \ do not copy
 
 : buffer: ( u "name" -- ) \ core-ext buffer-colon
     \g Define @i{name} and reserve @i{u} bytes starting at @i{addr}.
-    \g @i{name} run-time: @code{( -- addr )}.  Gforth initializes the
-    \g reserved bytes to 0, but the standard does not guarantee this.
+    \g Gforth initializes the reserved bytes to 0, but the standard
+    \g does not guarantee this.@* @i{name} execution: @code{( -- addr
+    \g )}.
     Create here over 0 fill allot ;
 
 : Variable ( "name" -- ) \ core
-    \g Define @i{name} and reserve a cell starting at @i{addr}.
-    \g @i{name} run-time: @code{( -- addr )}.
+    \g Define @i{name} and reserve a cell at @i{addr}.@* @i{name}
+    \g execution: @code{( -- addr )}.
     Create 0 , ;
 
 : AVariable ( "name" -- ) \ gforth
@@ -497,6 +500,8 @@ $BF000000. 1 cells 8 = [IF] #32 dlshift [THEN] dValue synonym-mask \ do not copy
     Create 0 A, ;
 
 : 2Variable ( "name" -- ) \ double two-variable
+    \g Define @i{name} and reserve two cells starting at @i{addr}.@* @i{name}
+    \g execution: @code{( -- addr )}.
     Create 0 , 0 , ;
 
 : uallot ( n1 -- n2 ) \ gforth
@@ -520,9 +525,8 @@ $BF000000. 1 cells 8 = [IF] #32 dlshift [THEN] dValue synonym-mask \ do not copy
 : (Value)    ['] def#tib create-from reveal ;
 
 : Constant ( w "name" -- ) \ core
-    \G Define a constant @i{name} with value @i{w}.
-    \G  
-    \G @i{name} execution: @i{-- w}
+    \G Define @i{name}.@*
+    \G @i{name} execution: @i{( -- w )}
     (Constant) , ;
 
 : AConstant ( addr "name" -- ) \ gforth
@@ -531,10 +535,12 @@ $BF000000. 1 cells 8 = [IF] #32 dlshift [THEN] dValue synonym-mask \ do not copy
     (Constant) A, ;
 
 : Value ( w "name" -- ) \ core-ext
-    \g Define @i{name} with the initial value @i{w}; this value can be
-    \g changed with @code{to @i{name}} or @code{->@i{name}}.
-    \g  
-    \g @i{name} execution: @i{-- w2}
+    \g Define @i{name} with the initial value @i{w} @*
+    \g @i{name} execution: @i{( -- w2 )} push the current value of @i{name}.@*
+    \g @code{to @i{name}} run-time: @i{( w3 -- )} change the value of
+    \g @i{name} to @i{w3}.@*
+    \g @code{+to @i{name}} run-time: @i{( n|u -- )} increment the value of
+    \g @i{name} by @i{n|u}
     (Value) , ;
 
 : AValue ( w "name" -- ) \ gforth
@@ -553,9 +559,11 @@ defer defer-default ( -- )
 \ default action for deferred words (overridden by a warning later)
 
 : Defer ( "name" -- ) \ core-ext
-\G Define a deferred word @i{name}; its execution semantics can be
-\G set with @code{defer!} or @code{is} (and they have to, before first
-\G executing @i{name}.
+\G Define a deferred word @i{name}; you have to set it to an xt before
+\G executing it.@* @i{name} execution: execute the most recent xt that
+\G @i{name} has been set to.@* @code{Is @i{name}} run-time: @i{( xt --
+\G )} Set @i{name} to execute @i{xt}.@* @code{Action-of @i{name}}
+\G run-time: @i{( -- xt )} @i{Xt} is currently assigned to @i{name}.
     ['] parse-name create-from reveal
     ['] defer-default A, ;
 
@@ -586,10 +594,9 @@ defer defer-default ( -- )
 Create hmtemplate
 0 A,                   \ link field
 ' peephole-compile, A, \ compile, field
-' no-to A,             \ to field
-\ ' no-defer@ A,         \ defer@
+' n/a A,               \ to field
 0 A,                   \ extra field
-' noop A,  \ name>interpret field
+' noop A,              \ name>interpret field
 ' default-name>comp A, \ name>comp field
 ' named>string A,      \ name>string field
 ' named>link A,        \ name>link field
@@ -664,7 +671,7 @@ Create hmtemplate
     \G afterwards if you want a more efficient @code{compile,}
     \G implementation.
     ['] general-compile, set-optimizer
-    latestnt only-code-address! ;
+    latestxt only-code-address! ;
 
 : does-code! ( xt2 xt1 -- ) \ gforth
     \G Change @i{xt1} to be a @code{@i{xt2} set-does>}-defined word.
@@ -678,7 +685,7 @@ Create hmtemplate
     \G afterwards if you want a more efficient implementation.
     ['] does, set-optimizer
     0 >hmextra hm!
-    dodoes: latestnt only-code-address! ;
+    dodoes: latestxt only-code-address! ;
 
 : set-to ( to-xt -- ) \ gforth
     \G Changes the implementations of the to-class methods of the most
@@ -729,40 +736,37 @@ Create hmtemplate
     \ This here needs to be optimizing even for gforth-itc, because
     \ otherwise this code won't work: for locals, the xt is no longer
     \ valid at run-time, so we have to optimize it away at compile
-    \ time; this is achived by explicitly calling >LITS and
+    \ time; this is achieved by explicitly calling >LITS and
     \ OPT!-COMPILE,.
 ;
 
-: ?fold1 ( <to>-xt -- name-xt )
-    \G Prepare partial constant folding for @code{(to)} methods: if
-    \G there's no literal on the folding stack, just compile the
-    \G @code{(to)} method as is.  If there is, drop the xt of the
-    \G \code{(to)} method, and retrieve the @i{name-xt} of the word TO
-    \G is applied to from the folding stack.
-    lits# 0= IF :, rdrop EXIT THEN drop lits> ;
+: ?fold1 ( colon-xt l:x -- x  |  <to>-xt -- never ) \ gforth-internal
+    \G Prepare one-literal constant folding: if there's no literal on the
+    \G literal stack, just compile the @var{colon-xt} as is, and do not return
+    \G to the caller.  If there is, drop the xt of the \var{colon-xt}, and
+    \G retrieve the literal @var{x} and return to the caller.
+    lits# 0= IF :, rdrop EXIT THEN drop lits> ; obsolete \ actually means: don't use
 : fold1: ( -- colon-sys ) \ gforth-internal
-    \G Defines a part of the TO <name> run-time semantics used with compiled
-    \G @code{TO}.  The stack effect of the code following @code{fold1:} must
-    \G be: @code{( xt -- ) ( generated: v -- )}.  The generated code stores
-    \G @i{v} in the storage represented by @i{xt}.
+    \G Define the code that optimizes constant folding with a single constant.
+    \G The code following @code{fold1:} has a stack effect of @code{( x -- )},
+    \G where @var{x} is the topmost entry from the literal stack.  If there's
+    \G none, this code is never reached, and the colon definition is compiled
+    \G as is.
     opt: postpone ?fold1 ;
 
-\ defer and friends
-
-: defer! ( xt xt-deferred -- ) \ core-ext  defer-store
-    \G Changes the @code{defer}red word @var{xt-deferred} to execute @var{xt}.
-    4 swap (to) ;
-opt: ?fold1 4 swap (to), ;
+\ Access methods to wordlists
 
 ' defer! Alias reveal! ( xt wid -- ) \ core-ext  reveal-store
-\G Add xt to a wordlist.
+\G Add @var{xt} to a wordlist. Mapped to @code{DEFER!}.
+' value+! Alias initwl ( wid -- ) \ core-ext  initwl
+\G initialize a wordlist. Mapped to @code{+TO}.
 \ by using the TO access method
 ' >hmto Alias reveal-method ( wid -- addr )
 
-' [noop] !-table to-class: value-to ( n value-xt -- ) \ gforth-internal
+' >body !-table to-class: value-to ( n value-xt -- ) \ gforth-internal
     \g this is the TO-method for normal values
 
-' [noop] defer-table to-class: defer-is ( n value-xt -- ) \ gforth-internal
+' >body defer-table to-class: defer-is ( n value-xt -- ) \ gforth-internal
     \g this is the TO-method for deferred words
 
 : int-to ( "name" x -- ) \ gforth-internal
@@ -773,28 +777,45 @@ opt: ?fold1 4 swap (to), ;
     \g Compilation semantics of \code{to}.
     record-name 0 (') (to), ; immediate restrict
 
-' int-to ' comp-to interpret/compile: TO ( value "name" -- ) \ core-ext
-\g changes the value of @var{name} to @var{value}
+' int-to ' comp-to interpret/compile: TO ( value ... "name" -- ) \ core-ext
+\G @i{Name} is a value-flavoured word, @i{...} is optional additional
+\G addressing information, e.g., for a value-flavoured field.  At
+\G run-time, perform the @i{to @i{name}} semantics: change @i{name}
+\G (with the same additional addressing information) to push
+\G @i{value}.  The type of @i{value} depends on the type of @i{name}
+\G (see the defining word for @i{name} for the actual type).
+\G An alternative syntax is to write @code{->@i{name}}.
 
 : <IS> ( "name" xt -- ) \ gforth-internal angle-is
     \g Changes the @code{defer}red word @var{name} to execute @var{xt}.
-    record-name 4 (') (to) ;
+    record-name 3 (') (to) ;
 
 : [IS] ( compilation "name" -- ; run-time xt -- ) \ gforth-internal bracket-is
     \g At run-time, changes the @code{defer}red word @var{name} to
     \g execute @var{xt}.
-    record-name 4 (') (to), ; immediate restrict
+    record-name 3 (') (to), ; immediate restrict
 
-' <IS> ' [IS] interpret/compile: IS ( value "name" -- ) \ core-ext
-\g changes the @code{defer}red word @var{name} to execute @var{value}
+' <IS> ' [IS] interpret/compile: IS ( xt ... "name" -- ) \ core-ext
+\G @i{Name} is a defer-flavoured word, @i{...} is optional additional
+\G addressing information, e.g., for a defer-flavoured field.  At
+\G run-time, perform the @i{is @i{name}} semantics: change @i{name}
+\G (with the same additional addressing information) to execute
+\G @i{xt}.
 
 : <+TO>  record-name 1 (') (to) ;
 : [+TO]  record-name 1 (') (to), ; immediate restrict
 
-' <+TO> ' [+TO] interpret/compile: +TO ( value "name" -- ) \ gforth
-\g increments the value of @var{name} by @var{value}
+' <+TO> ' [+TO] interpret/compile: +TO ( value ... "name" -- ) \ gforth
+\G @i{Name} is a value-flavoured word, @i{...} is optional additional
+\G addressing information, e.g., for a value-flavoured field.  At
+\G run-time, perform the @i{+to @i{name}} semantics: if @i{name} (with
+\G the same additional addressing information) pushed @i{value1}
+\G before, change it to push @i{value2}, the sum of the @i{value1} and
+\G @i{value}.  The type of @i{value} depends on the type of @i{name}
+\G (see the defining word for @i{name} for the actual type).  An
+\G alternative syntax is to write @code{+>@i{name}}.
 
-\ \ : ;                                                  	24feb93py
+\ \ : ; 24feb93py
 
 defer :-hook ( sys1 -- sys2 )
 defer ;-hook ( sys2 -- sys1 )
@@ -824,7 +845,7 @@ Create defstart
 :noname ; aconstant dummy-noname
 : :noname ( -- xt colon-sys ) \ core-ext	colon-no-name
     :start dummy-noname noname-from
-    latestnt colon-sys ] :-hook ;
+    latestxt colon-sys ] :-hook ;
 
 : ; ( compilation colon-sys -- ; run-time nest-sys -- ) \ core	semicolon
     ;-hook [compile] exit flush-code
@@ -859,6 +880,11 @@ Create defstart
 
 ' int-does> ' comp-does>
 interpret/compile: does> ( compilation colon-sys1 -- colon-sys2 ) \ core does
+    \G Changes the current word such that it pushes its body address
+    \G and then calls the code behind the @word{does>}.  Also changes
+    \G the @code{compile,} implementation accordingly.  Call
+    \G @code{set-optimizer} afterwards if you want a more efficient
+    \G implementation.
 
 \ for cross-compiler's interpret/compile:
 
@@ -888,7 +914,7 @@ interpret/compile: does> ( compilation colon-sys1 -- colon-sys2 ) \ core does
 	then
     then ;
 
-Create voc-table ' (reveal) A, ' drop A, ' n/a A, ' n/a A, ' (reveal) A,
+Create voc-table ' (reveal) A, ' drop A, ' n/a A, ' (reveal) A, ' [noop] A,
 
 ' [noop] voc-table to-class: voc-to ( n voc-xt -- ) \ gforth-internal
     \g this is the TO-method for wordlists

@@ -1,7 +1,7 @@
 \ substitute stuff
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2012,2015,2016,2022 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2015,2016,2022,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -24,11 +24,13 @@ cs-wordlist AConstant macros-wordlist ( -- wid ) \ gforth-experimental
 \G wordlist for string replacement macros
 
 [IFUNDEF] $Value
-    to-table: $!-table  $! $+!
+    [IFUNDEF] $!-table
+	to-table: $!-table  $! $+! [noop]
+    [THEN]
     ' >body $!-table to-class: $value-to
     
     : $Value ( addr u -- )
-	Create here 0 , $!
+	Create here dup $saved 0 , $!
 	['] $@ set-does> ['] $value-to set-to ;
 [THEN]
 
@@ -37,13 +39,11 @@ synonym macro: $value
 : replaces ( addr1 len1 addr2 len2 -- ) \ string-ext
     \G create a macro with name @var{addr2 len2} and content @var{addr1 len1}.
     \G If the macro already exists, just change the content.
-    2dup macros-wordlist search-wordlist
-    IF
-	nip nip 0 swap [ ' (to) :, ]
+    2dup macros-wordlist find-name-in
+    ?dup-IF
+	nip nip value!
     ELSE
-	get-current >r macros-wordlist set-current
-	['] macro: execute-parsing
-	r> set-current
+	[: macros-wordlist set-current nextname macro: ;] current-execute
     THEN ;
 
 : warn-hardcoded ( addr u xt1 xt2 -- )

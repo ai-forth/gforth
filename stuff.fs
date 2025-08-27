@@ -1,7 +1,7 @@
 \ miscelleneous words
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook
-\ Copyright (C) 1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -61,11 +61,6 @@ AUser CSP
     drop ;
 [then]
 
-: pow2? ( u -- f ) \ gforth pow-two-query
-    \g @i{f} is true iff @i{u} is a power of two, i.e., there is
-    \g exactly one bit set in @i{u}.
-    dup dup 1- and 0= and 0<> ;
-
 : ctz ( x -- u ) \ gforth c-t-z
     \g count trailing zeros in binary representation of x
     dup if
@@ -96,15 +91,46 @@ AUser CSP
 	2drop
     then ;
 
+\ multiple values to and from return stack
+
+: n>r ( x1 .. xn n -- R:xn..R:x1 R:n ) \ tools-ext n-to-r
+    \G In Standard Forth, the order of items on the return stack is
+    \G not specified, and the only thing you can do with the items on
+    \G the return stack is to use @code{nr>}
+    scope r> { n ret }
+    0 BEGIN dup n < WHILE swap >r 1+ REPEAT >r
+    ret >r endscope ;
+: nr> ( R:xn..R:x1 R:n -- x1 .. xn n ) \ tools-ext n-r-from
+    \G In Standard Forth, the order of items on the return stack is
+    \G not specified, and the only thing you can do with the items on
+    \G the return stack is to use @code{nr>}
+    scope r> r> { ret n }
+    0 BEGIN dup n < WHILE r> swap 1+ REPEAT
+    ret >r endscope ;
+
 \ defer stuff
 
-: preserve ( "name" -- ) \ gforth
-    \G emit code that reverts a deferred word to the state at
-    \G compilation
-    ' dup defer@ lit, 4 swap (to), ; immediate
+: preserve ( compilation "name" -- ; run-time -- ) \ gforth
+    \G @i{Name} has to be a defer-flavoured word that does not consume
+    \G additional stack items for addressing (i.e., not a
+    \G defer-flavoured field).  @code{Preserve @i{name}} changes
+    \G @i{name} at run-time to execute the same XT that it had at
+    \G compile time.  I.e., @code{Preserve @i{name}} is equivalent to
+    \G @code{[ action-of @i{name} ] literal is @i{name}}.
+    ' dup defer@ lit, 3 swap (to), ; immediate
 
-3 to: action-of ( interpretation "name" -- xt; compilation "name" -- ; run-time -- xt ) \ core-ext
-\G @i{Xt} is the XT that is currently assigned to @i{name}.
+\ easier definer of noname words that are assigned to a deferred word
+
+: :is ( "name" -- ) \ gforth-experimental
+    \G define a noname that is assigned to the deferred word @var{name}
+    \G at @code{;}.
+    :noname colon-sys-xt-offset n>r drop
+    record-name (') ['] defer! nr> drop ;
+: :method ( class "name" -- ) \ gforth-experimental
+    \G define a noname that is assigned to the deferred word @var{name}
+    \G in @var{class} at @code{;}.
+    :noname colon-sys-xt-offset n>r drop
+    swap record-name (') ['] defer! nr> drop ;
 
 \ shell commands
 
@@ -137,7 +163,7 @@ UValue $? ( -- n ) \ gforth dollar-question
     forthstart dictionary-end within ;
 
 : in-return-stack? ( addr -- f )
-    rp0 @ [ forthstart 9 cells + ]L @ - $FFF + -$1000 and rp0 @ within ;
+    rp0 @ [ forthstart section-desc + #2 cells + ]L @ - $FFF + -$1000 and rp0 @ within ;
 
 \ !! rewrite slurp-file using slurp-fid
 : slurp-file ( c-addr1 u1 -- c-addr2 u2 ) \ gforth
@@ -178,20 +204,22 @@ UValue $? ( -- n ) \ gforth dollar-question
     \G directory.  Throws an exception if the file cannot be opened.
     fpath file>path ;
 
+\ recognizer sequences
+
 : defers@ ( xt -- xt' )
     BEGIN  dup ['] defer@ catch-nobt 0= WHILE  nip  REPEAT  drop ;
-synonym >rec-stack >body ( xt -- stack )
+
 : get-recognizer-sequence ( recs-xt -- x1 .. xtn n )
-    defers@ >rec-stack get-stack ;
+    defers@ get-stack ;
 : set-recognizer-sequence ( x1 .. xtn n recs-xt -- )
-    defers@ >rec-stack set-stack ;
+    defers@ set-stack ;
 
 Create forth-recognizer ( -- xt ) \ gforth-obsolete
 \G backward compatible to Matthias Trute recognizer API.
 \G This construct turns a deferred word into a value-like word.
 ' forth-recognize ,
 DOES> @ defer@ ;
-opt: @ 3 swap (to), ;
+opt: @ 2 swap (to), ;
 ' s-to set-to
 : set-forth-recognize ( xt -- ) \ gforth-obsolete
     \G Change the system recognizer
@@ -204,27 +232,28 @@ opt: @ 3 swap (to), ;
     \G set the recognizer stack from content on the stack
     ['] forth-recognize set-recognizer-sequence ;
 
-: -stack { x stack -- } \ gforth-experimental
-    \G Delete every occurence of @i{x} from anywhere in @i{stack}.
+: -stack { x stack -- } \ gforth-experimental minus-stack
+    \G Delete every occurrence of @i{x} from anywhere in @i{stack}.
     stack get-stack  0 stack set-stack 0 ?DO
         dup x <> IF  stack >back  ELSE	drop  THEN
     LOOP ;
 
-: +after { x1 x2 stack -- } \ gforth-experimental
-    \G Insert @var{x1} below every occurence @var{x2} in @i{stack}.
+: +after { x1 x2 stack -- } \ gforth-experimental plus-after
+    \G Insert @var{x1} below every occurrence @var{x2} in @i{stack}.
     stack get-stack  0 stack set-stack 0 ?DO
 	dup stack >back x2 = IF  x1 stack >back  THEN
     LOOP ;
 
-: try-recognize ( addr u xt -- results | false ) \ gforth-experimental
-    \G For nested recognizers: try to recognize @var{addr u}, and execute
-    \G @var{xt} to check if the result is desired.  If @var{xt} returns false,
-    \G clean up all side effects of the recognizer, and return false.
-    \G Otherwise return the results of the call to @var{xt}, of which the
-    \G topmost is non-zero.
-    { xt: xt }  sp@ fp@ 2>r
+: try-recognize ( c-addr u xt -- ... translator | 0 ) \ gforth-experimental
+    \G Try to recognize @var{c-addr u} with @word{forth-recognize},
+    \G then execute @var{xt} @samp{( @i{... translator -- ... true |
+    \G false } )}.  If @var{xt} returns 0, reset the stacks to the
+    \G depths at the start of @word{try-recognize}, drop three data
+    \G stack items, and push 0.  Otherwise return the results
+    \G of executing @var{xt}.
+    { xt: xt } sp@ fp@ 2>r
     forth-recognize xt dup
-    if    2rdrop
+    if 2rdrop
     else
 	2r> fp! sp! 2drop false
     then ;
@@ -240,7 +269,7 @@ opt: @ 3 swap (to), ;
     \G processed as if they were preceded by @code{postpone}.
     \G Postpone state ends when @code{[[} is recognized.
     ['] rec-[[ action-of forth-recognize >stack
-    ['] >postpone translate-state ; immediate restrict
+    ['] postponing set-state ; immediate restrict
 
 \ mem+do...mem+loop mem-do...mem-loop array>mem
 
@@ -252,6 +281,10 @@ constant mem*do-noconstant
 : array>mem ( uelements uelemsize -- ubytes uelemsize ) \ gforth-experimental
     \G @i{ubytes}=@i{uelements}*@i{uelemsize}
     tuck * swap ;
+
+' fold2-2 foldn-from: opt-array>mem
+[: drop lits> dup ]] Literal * Literal [[ ;] 1 set-fold#
+' opt-array>mem optimizes array>mem
 
 : const-mem+loop ( +nstride xt do-sys -- )
     cs-item-size 1+ pick ]] literal +loop [[ 2drop ;
@@ -274,9 +307,9 @@ constant mem*do-noconstant
 
 : mem-do ( compilation -- w xt do-sys; run-time addr ubytes +nstride -- ) \ gforth-experimental mem-minus-do
     \g Starts a counted loop that starts with @code{I} as
-    \g @i{addr}+@i{ubytes}-@i{ustride} and then steps backwards
+    \g @i{addr}+@i{ubytes}-@i{nstride} and then steps backwards
     \g through memory with -@i{nstride} wide steps as long as
-    \g @code{I}>=@i{addr}.  Must be finished with @i{loop}.
+    \g @code{I}>=@i{addr}.  Must be finished with @word{loop}.
     lits# if
         lits> negate ['] const-mem+loop over ]] literal + over + u-[do [[
     else
@@ -289,7 +322,7 @@ constant mem*do-noconstant
     \g Starts a counted loop that starts with @code{I} as @i{addr} and
     \g then steps upwards through memory with @i{nstride} wide steps
     \g as long as @code{I}<@i{addr}+@i{ubytes}.  Must be finished with
-    \g @i{loop}.
+    \g @word{loop}.
     lits# if
         lits> ['] const-mem+loop ]] bounds u+do [[
     else
@@ -551,7 +584,7 @@ alias xd>s ( xd -- d ) \ gforth
 
 ' naligned alias *aligned ( addr1 n -- addr2 ) \ gforth star-aligned
 \g @var{addr2} is the aligned version of @var{addr1} with respect to the
-\g alignment @var{n}.
+\g alignment @var{n}; @var{n} must be a power of 2.
 : *align ( n -- ) \ gforth star-align
     \G Align @code{here} with respect to the alignment @var{n}.
     here swap naligned ->here ;
@@ -644,7 +677,7 @@ synonym hex. h. ( u -- ) \ gforth
     \G not in Gforth before 1.0.
 
 : hex.r ( u1 u2 -- )
-    ['] u.r $10 base-execute ;
+    >r 0 <<# ['] #s $10 base-execute '$' hold #> r> type-r #>> ;
 
 : dump ( addr u -- ) \ tools
     ['] dump $10 base-execute ;
@@ -654,25 +687,15 @@ synonym hex. h. ( u -- ) \ gforth
 
 : th ( addr1 u -- addr2 )
     cells + ;
+opt: drop ]] cells + [[ ;
 
 \ \\\ - skip to end of file
 
-: \\\ ( -- ) \ gforth
+: \\\ ( -- ) \ gforth triple-backslash
     \G skip remaining source file
     source-id dup 1 -1 within IF
 	dup >r file-size throw r> reposition-file throw
 	BEGIN  refill 0= UNTIL  postpone \  THEN ; immediate
-
-\ multiple values to and from return stack
-
-: n>r ( x1 .. xn n -- R:xn..R:x1 R:n ) \ tools-ext n-to-r
-    scope r> { n ret }
-    0  BEGIN  dup n <  WHILE  swap >r 1+  REPEAT  >r
-    ret >r endscope ;
-: nr> ( R:xn..R:x1 R:n -- x1 .. xn n ) \ tools-ext n-r-from
-    scope r> r> { ret n }
-    0  BEGIN  dup n <  WHILE  r> swap 1+  REPEAT
-    ret >r endscope ;
 
 \ 2value
 
@@ -682,7 +705,13 @@ create dummy-2value
 ' 2@ set-does>
 ' 2value-to set-to
 
-: 2Value ( d "name" -- ) \ double-ext two-value
+: 2Value ( w1 w2 "name" -- ) \ double-ext two-value
+    \g Define @i{name} with the initial value @i{w} @*
+    \g @i{name} execution: @i{( -- w3 w4 )} push the current value of @i{name}.@*
+    \g @code{to @i{name}} run-time: @i{( w5 w6 -- )} change the value of
+    \g @i{name} to @i{w5 w6}.@*
+    \g @code{+to @i{name}} run-time: @i{( d|ud -- )} increment the value of
+    \g @i{name} by @i{d|ud}
     ['] dummy-2value create-from reveal 2, ;
 
 s" help.txt" open-fpath-file throw 2drop slurp-fid save-mem-dict
@@ -695,7 +724,10 @@ s" help.txt" open-fpath-file throw 2drop slurp-fid save-mem-dict
 :noname drop execute ;
 :noname 0> IF execute ELSE compile, THEN ;
 ' 2lit, >postponer
-translate: translate-word
+translate: translate-word ( xt +-1 -- ... ) \ gforth-experimental
+\G This translator is useful for a recognizer that uses @word{find};
+\G i.e., not really.
+
 ' translate-word Constant rectype-word ( takes xt +/-1, i.e. result of find and search-wordlist )
 
 \ concat recognizers to another recognizer
@@ -707,7 +739,7 @@ struct
     cell% field buffer-length
     cell% field buffer-address
     cell% field buffer-maxlength \ >=length
-end-struct buffer% ( u1 u2 -- ) \ gforth-experimental
+end-struct buffer% ( u1 u2 -- ) \ gforth-experimental buffer-percent
 \g @i{u1} is the alignment and @i{u2} is the size of a buffer descriptor.
 
 : init-buffer ( addr -- ) \ gforth-experimental
@@ -846,3 +878,17 @@ fold1:
     \G @code{place})
     swap $ff min swap
     over >r  rot over 1+  r> move c! ;
+
+\ outer recurse
+
+: outer-section ( -- addr )
+    section# 1- #extra-sections @ max sections $[] @ ;
+' noop Alias outer-recurse ( ... -- ... ) \ core
+\g Alias to the current definition.
+[: drop ['] lastnt outer-section section-execute @ ;] set->int
+' s-to set-to
+
+\ equivalents for defer!
+
+0 to-access: value! ( value xt-value -- ) \ gforth-internal value-store
+    \G Changes the value of @var{xt-value} to @var{x}

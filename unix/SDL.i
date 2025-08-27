@@ -9,7 +9,7 @@ extern struct _IO_FILE *stderr;
 #endif
 %}
 
-// exec: sed -e 's/^c-library\( .*\)/cs-vocabulary SDL2\n\nget-current also SDL2 definitions\n\nc-library\1\ns" a a 0" vararg$ $!/g' -e 's/^end-c-library/end-c-library\nprevious set-current/g' -e 's/s" SDL" add-lib/s" SDL2" add-lib/g'
+// exec: sed -e 's/^c-library\( .*\)/cs-vocabulary SDL2\nget-current >r also SDL2 definitions\n\nc-library\1\ns" a a 0" vararg$ $!/g' -e 's/^end-c-library/end-c-library\nprevious r> set-current/g' -e 's/s" SDL" add-lib/s" SDL2" add-lib/g'
 // prep: sed -e 's/swigFunctionPointer.*{((\([^*]*\)\*)ptr)->\([^}]*\)}.*/if(offsetof(\1, \2) >= 0) \0/g'
 
 %apply unsigned int { Uint32, size_t, Uint16, Uint8, SDL_BlendMode };
@@ -38,7 +38,7 @@ extern struct _IO_FILE *stderr;
 %include <SDL2/SDL_filesystem.h>
  // %include <SDL2/SDL_gamecontroller.h>
 %include <SDL2/SDL_haptic.h>
-%include <SDL2/SDL_hidapi.h>
+ // %include <SDL2/SDL_hidapi.h>
 %include <SDL2/SDL_hints.h>
  // %include <SDL2/SDL_joystick.h>
 %include <SDL2/SDL_loadso.h>

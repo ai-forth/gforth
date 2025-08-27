@@ -1,7 +1,7 @@
 \ Number IO
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook, Jens Wilke
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2010,2015,2016,2019,2022 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2010,2015,2016,2019,2022,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -24,7 +24,7 @@ require ./io.fs
     \G @var{c-addr} is the address of a transient region that can be
     \G used as temporary data storage. At least 84 characters of space
     \G is available.
-    here word-pno-size + aligned ;
+    [ image-header 2 cells + ] ALiteral @ word-pno-size + aligned ;
 
 : +hold ( n -- addr )
     \G Reserve space for n chars in the pictured numeric buffer.
@@ -98,17 +98,21 @@ require ./io.fs
 
 \ print numbers                                        07jun92py
 
+: type-r ( c-addr u u2 -- ) \ gforth-experimental
+    \G Type string @i{c-addr u} right-aligned in field of width \i{u2}.
+    over - spaces type ;
+
 : d.r ( d n -- ) \ double	d-dot-r
     \G Display @var{d} right-aligned in a field @var{n} characters wide. If more than
     \G @var{n} characters are needed to display the number, all digits are displayed.
     \G If appropriate, @var{n} must include a character for a leading ``-''.
     >r tuck  dabs  <<# #s  rot sign #>
-    r> over - spaces  type #>> ;
+    r> type-r #>> ;
 
 : ud.r ( ud n -- ) \ gforth	u-d-dot-r
     \G Display @var{ud} right-aligned in a field @var{n} characters wide. If more than
     \G @var{n} characters are needed to display the number, all digits are displayed.
-    >r <<# #s #> r> over - spaces type #>> ;
+    >r <<# #s #> r> type-r #>> ;
 
 : .r ( n1 n2 -- ) \ core-ext	dot-r
     \G Display @var{n1} right-aligned in a field @var{n2} characters wide. If more than

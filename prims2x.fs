@@ -1,7 +1,7 @@
 \ converts primitives to, e.g., C code 
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2009,2010,2011,2013,2015,2017,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2009,2010,2011,2013,2015,2017,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -67,6 +67,8 @@ warnings off
 include startup.fs
 [THEN]
 
+require hold-number-line.fs
+
 : struct% struct ; \ struct is redefined in gray
 
 warnings off
@@ -84,8 +86,9 @@ variable rawinput \ pointer to next character to be scanned
 variable endrawinput \ pointer to the end of the input (the char after the last)
 variable cookedinput \ pointer to the next char to be parsed
 variable line \ line number of char pointed to by input
-variable line-start \ pointer to start of current line (for error messages)
 0 line !
+2variable syncline \ #line string at the definition of the last primitive
+variable line-start \ pointer to start of current line (for error messages)
 2variable filename \ filename of original input file
 0 0 filename 2!
 2variable out-filename \ filename of the output file (for sync lines)
@@ -115,13 +118,6 @@ $12340000 immarg !
 : th ( addr1 n -- addr2 )
     cells + ;
 
-: holds ( addr u -- )
-    \ like HOLD, but for a string
-    tuck + swap 0 +do
-	1- dup c@ hold
-    loop
-    drop ;
-
 : insert-wordlist { c-addr u wordlist xt -- }
     \ adds name "addr u" to wordlist using defining word xt
     \ xt may cause additional stack effects
@@ -150,6 +146,9 @@ $12340000 immarg !
 	addr u ['] print-error stderr outfile-execute
 	1 (bye) \ abort
     endif ;
+
+: save#line ( -- )
+    line @ 0 <<# hold#line #> save-mem #>> syncline 2! ;
 
 : quote ( -- )
     '"' emit ;
@@ -182,7 +181,7 @@ struct%
  cell%    field item-stack  \ descriptor for the stack used, 0 is default
  cell%    field item-type   \ descriptor for the item type
  cell%    field item-offset \ offset in stack items, 0 for the deepest element
- cell%	  field item-first  \ true if this is the first occurence of the item
+ cell%	  field item-first  \ true if this is the first occurrence of the item
 end-struct item%
 
 struct%
@@ -1384,9 +1383,10 @@ is output-c-prim-num
     prim prim-name 2@ 2,
     prim prim-stack-string 2@ condition-stack-effect 2,
     prim prim-wordset 2@ 2,
-    prim prim-c-name 2@ condition-pronounciation 2,
+    prim prim-c-name 2@ condition-pronunciation 2,
     prim prim-doc 2@ 2,
-    0 , ;
+    0 ,
+    syncline 2@ 2, ;
 [THEN]
 
 

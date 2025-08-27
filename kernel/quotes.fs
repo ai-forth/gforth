@@ -1,7 +1,7 @@
 \ quote: S" and ." words
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke
-\ Copyright (C) 1996,1998,1999,2002,2003,2007,2013,2014,2016,2018,2019,2021,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1996,1998,1999,2002,2003,2007,2013,2014,2016,2018,2019,2021,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -24,8 +24,15 @@ require ./vars.fs
 
 \ String literals
 
-Defer next-section     \ put some data within a definition
-Defer previous-section \ end that part
+Defer next-section ( -- ) \ gforth
+\g Switch to the next section in the section stack.  If there is no
+\g such section yet, create it (with the size being a quarter of the
+\g size of the current section).
+
+Defer previous-section ( -- ) \ gforth
+\g Switch to the previous section in the section stack; the now-next
+\g section continues to exist with everything that was put there.
+\g Throw an exception if there is no previous section.
 
 :noname  latestnt  postpone ahead ; is next-section
 :noname  postpone then  lastnt !  ; is previous-section
@@ -34,24 +41,25 @@ Defer previous-section \ end that part
     2>r next-section here 2r> string, align >r  previous-section
     r> postpone literal ; immediate restrict
 
-: SLiteral ( Compilation c-addr1 u ; run-time -- c-addr2 u ) \ string
-\G Compilation: compile the string specified by @i{c-addr1},
-\G @i{u} into the current definition. Run-time: return
-\G @i{c-addr2 u} describing the address and length of the
-    \G string.
+: SLiteral ( Compilation c-addr1 u -- ; run-time -- c-addr2 u ) \ string
+    \G Compilation semantics: ( @i{c-addr1 u --} )
+    \G Copy the string described by @i{c-addr1 u} to @i{c-addr2 u} and
+    \g compile the run-time semantics.@*
+    \G Run-time Semantics: ( @i{ -- c-addr2 u} ).@*
+    \G Interpretation semantics: not defined in the standard.
     tuck 2>r next-section here 2r> chars mem, align >r previous-section
     r> postpone literal postpone literal ; immediate restrict
 
 \ \ abort"							22feb93py
 
-: abort" ( compilation 'ccc"' -- ; run-time f -- ) \ core,exception-ext	abort-quote
+: abort" ( compilation 'ccc"' -- ; run-time ... f -- ) \ core,exception-ext	abort-quote
 \G If any bit of @i{f} is non-zero, perform the function of @code{-2 throw},
 \G displaying the string @i{ccc} if there is no exception frame on the
 \G exception stack.
     postpone if '"' parse postpone cliteral postpone c(abort")
     dead-code on postpone then ; immediate restrict
 
-: warning" ( compilation 'ccc"' -- ; run-time f -- ) \ gforth
+: warning" ( compilation 'ccc"' -- ; run-time f -- ) \ gforth warning-quote
     \G if @i{f} is non-zero, display the string @i{ccc} as warning message.
     postpone if '"' parse postpone cliteral postpone c(warning")
     postpone then ; immediate restrict

@@ -1,7 +1,7 @@
 \ data structures (like C structs)
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook
-\ Copyright (C) 1995,1997,2000,2003,2007,2019,2021,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,2000,2003,2007,2019,2021,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -21,13 +21,13 @@
 : naligned ( addr1 n -- addr2 ) \ gforth-internal
 \g @var{Addr2} is the aligned version of @var{addr1} with respect to the
 \g alignment @var{n}.  Another name for this word is @code{*aligned}.
- 1- tuck +  swap invert and ;
-
-' naligned alias nalign \ old name, obsolete
+    1- tuck +  swap invert and ;
+fold1:
+    1- dup >lits postpone + invert >lits postpone and ;
 
 : field, ( align1 offset1 align size --  align2 offset2 )
-    swap rot over nalign dup , ( align1 size align offset )
-    rot + >r nalign r> ;
+    swap rot over naligned dup , ( align1 size align offset )
+    rot + >r naligned r> ;
 
 : create-field ( align1 offset1 align size --  align2 offset2 )
     create field, ;
@@ -45,43 +45,43 @@
 \g @var{align} and size @var{size1} (@var{size} rounded up to be a
 \g multiple of @var{align}).@*
 \g @code{name} execution: -- @var{align size1}@*
-    over nalign \ pad size to full alignment
+    over naligned \ pad size to full alignment
     2constant ;
 
 1 chars 0 end-struct struct ( -- align size ) \ gforth
 \g An empty structure, used to start a structure definition.
 
 \ type descriptors
-1 aligned   1 cells   2constant cell% ( -- align size ) \ gforth
-1 chars     1 chars   2constant char% ( -- align size ) \ gforth
-1 faligned  1 floats  2constant float% ( -- align size ) \ gforth
-1 dfaligned 1 dfloats 2constant dfloat% ( -- align size ) \ gforth
-1 sfaligned 1 sfloats 2constant sfloat% ( -- align size ) \ gforth
-cell% 2*              2constant double% ( -- align size ) \ gforth
+1 aligned   1 cells   2constant cell% ( -- align size ) \ gforth cell-percent
+1 chars     1 chars   2constant char% ( -- align size ) \ gforth char-percent
+1 faligned  1 floats  2constant float% ( -- align size ) \ gforth float-percent
+1 dfaligned 1 dfloats 2constant dfloat% ( -- align size ) \ gforth d-float-percent
+1 sfaligned 1 sfloats 2constant sfloat% ( -- align size ) \ gforth s-float-percent
+cell% 2*              2constant double% ( -- align size ) \ gforth double-percent
 
 \ memory allocation words
-' drop alias %alignment ( align size -- align ) \ gforth
+' drop alias %alignment ( align size -- align ) \ gforth percent-alignment
 \g The alignment of the structure.
-' nip alias %size ( align size -- size ) \ gforth
+' nip alias %size ( align size -- size ) \ gforth percent-size
 \g The size of the structure.
 
-: %align ( align size -- ) \ gforth
+: %align ( align size -- ) \ gforth percent-align
     \G Align the data space pointer to the alignment @var{align}. 
-    drop here swap nalign here - allot ;
+    drop here swap naligned here - allot ;
 
-: %allot ( align size -- addr ) \ gforth
+: %allot ( align size -- addr ) \ gforth percent-allot
     \g Allot @var{size} address units of data space with alignment
     \g @var{align}; the resulting block of data is found at
     \g @var{addr}.
     tuck %align
     here swap allot ;
 
-: %allocate ( align size -- addr ior ) \ gforth
+: %allocate ( align size -- addr ior ) \ gforth percent-allocate
     \g Allocate @var{size} address units with alignment @var{align},
     \g similar to @code{allocate}.
     nip allocate ;
 
-: %alloc ( align size -- addr ) \ gforth
+: %alloc ( align size -- addr ) \ gforth percent-alloc
     \g Allocate @var{size} address units with alignment @var{align},
     \g giving a data block at @var{addr}; @code{throw} an ior code
     \g if not successful.

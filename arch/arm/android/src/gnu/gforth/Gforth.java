@@ -1,7 +1,7 @@
 /* Android activity for Gforth on Android
 
   Authors: Bernd Paysan, Anton Ertl
-  Copyright (C) 2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+  Copyright (C) 2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -49,12 +49,14 @@ import android.hardware.usb.UsbManager;
 import android.content.Context;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.SurfaceHolder;
 import android.view.OrientationEventListener;
+import android.view.View.OnLayoutChangeListener;
 import android.view.ViewTreeObserver.OnGlobalLayoutListener;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -157,6 +159,7 @@ public class Gforth
     public String shortcutname;
     public String shortcutfile;
     public String shortcuticon;
+    public WindowInsets insets;
 
     private static final String META_DATA_LIB_NAME = "android.app.lib_name";
     private static final String META_DATA_STARTFILE = "android.app.startfile";
@@ -355,6 +358,12 @@ public class Gforth
 	public void onSizeChanged(int w, int h, int oldw, int oldh) {
 	    mActivity.onEventNative(14, w);
 	    mActivity.onEventNative(15, h);
+	}
+	@Override
+	public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+	    mActivity.insets=insets;
+	    mActivity.onEventNative(27, insets);
+	    return insets;
 	}
 	@Override
 	public boolean dispatchKeyEvent (KeyEvent event) {

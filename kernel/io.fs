@@ -1,7 +1,7 @@
 \ input output basics				(extra since)	02mar97jaw
 
 \ Authors: Bernd Paysan, Anton Ertl, Jens Wilke, Neal Crook, Gerald Wodni
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -83,10 +83,10 @@ unlock H base ! lock T
     dup 0< IF  throw  THEN  nip ;
 
 : (key) ( -- c / ior )
-    infile-id (key-file) ;
+    0 winch? atomic!@ IF  EINTR  ELSE  infile-id (key-file)  THEN ;
 
 : (key?) ( -- flag )
-    infile-id key?-file ;
+    infile-id key?-file  winch? @ or ;
 
 user-o op-vector
 0 0
@@ -140,7 +140,7 @@ umethod key? ( -- flag ) \ facility key-question
 
 : key ( -- char ) \ core
 \G Receive (but do not display) one character, @var{char}.
-    BEGIN  key-ior dup EINTR =  WHILE  drop winch? off  REPEAT
+    BEGIN  key-ior dup EINTR =  WHILE  drop  REPEAT
     dup 0< IF  throw  THEN ;
 
 here
@@ -244,6 +244,8 @@ theme-color: error-hl-inv ( -- ) \ gforth
 theme-color: status-color ( -- ) \ gforth
 \G color mod for status bar
 theme-color: compile-color ( -- ) \ gforth
+\G color mod for status bar in compile mode
+theme-color: postpone-color ( -- ) \ gforth
 \G color mod for status bar in compile mode
 
 \ space spaces		                                21mar93py

@@ -1,7 +1,7 @@
 /* Gforth virtual machine (aka inner interpreter)
 
   Authors: Anton Ertl, Bernd Paysan, David Kühling
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -376,6 +376,10 @@ static inline Cell slashfstage2(Cell n1, stagediv_t *stage1)
 extern Cell winch_addr;
 #endif
 
+extern Address alloc_mmap(Cell size);
+extern void page_noaccess(void *a);
+extern UCell pagesize;
+
 #ifdef STANDALONE
 jmp_buf * throw_jmp_handler;
 
@@ -425,9 +429,14 @@ void throw(int code)
 #define gforth_engine gforth_engine2
 #define VARIANT(v)	(v)
 #define JUMP(target)	goto I_noop
-#define LABEL(name) H_##name: asm(ASMCOMMENT "H " #name); SKIP16; \
+#ifdef __ia64__
+#define SKIP4X4 asm("SKIP4"); /* one IA64 instruction is already 16 bytes */
+#else
+#define SKIP4X4 ({ asm("SKIP4"); asm("SKIP4"); asm("SKIP4"); asm("SKIP4"); })
+#endif
+#define LABEL(name) H_##name: asm(ASMCOMMENT "H " #name); SKIP4X4; \
     asm(ASMCOMMENT "I " #name); I_##name:
-#define LABEL_UU(name) H_##name: MAYBE_UNUSED asm(ASMCOMMENT "H " #name); SKIP16; \
+#define LABEL_UU(name) H_##name: MAYBE_UNUSED asm(ASMCOMMENT "H " #name); SKIP4X4; \
     asm(ASMCOMMENT "I " #name); I_##name: MAYBE_UNUSED
 /* the SKIP16 after LABEL3 is there, because the ARM gcc may place
    some constants after the final branch, and may refer to them from
@@ -442,7 +451,7 @@ void throw(int code)
     asm(ASMCOMMENT "J " #name);  \
     asm(ASMCOMMENT "J " #name);  \
     asm(ASMCOMMENT "J " #name);  \
-  } SKIP16;
+  } SKIP4X4;
 #define LABEL3_UU(name) J_##name: MAYBE_UNUSED { \
     asm(ASMCOMMENT "J " #name);                  \
     asm(ASMCOMMENT "J " #name);                  \
@@ -452,7 +461,7 @@ void throw(int code)
     asm(ASMCOMMENT "J " #name);  \
     asm(ASMCOMMENT "J " #name);  \
     asm(ASMCOMMENT "J " #name);  \
-  } SKIP16;
+  } SKIP4X4;
 
 #elif ENGINE==3
 /* variant with different immediate arguments for finding out

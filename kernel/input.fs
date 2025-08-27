@@ -1,7 +1,7 @@
 \ Input handling (object oriented)                      22oct00py
 
 \ Authors: Anton Ertl, Bernd Paysan, Gerald Wodni
-\ Copyright (C) 2000,2003,2004,2005,2006,2007,2011,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2003,2004,2005,2006,2007,2011,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -135,18 +135,25 @@ terminal-input @       \ source -> terminal-input::source
     \G input source specification, in some platform-dependent way that can
     \G be used by @code{restore-input}.
     (save-input) current-input @ swap 1+ ;
+
 : restore-input ( x1 .. xn n -- flag ) \ core-ext
     \G Attempt to restore the input source specification to the state
     \G described by the @i{n} entries @i{xn - x1}. @i{flag} is true if
-    \G the restore fails.  In Gforth with the new input code, it fails
-    \G only with a flag that can be used to throw again; it is also
+    \G the restore fails.  In recent (how recent?) Gforth, it is
     \G possible to save and restore between different active input
     \G streams. Note that closing the input streams must happen in the
-    \G reverse order as they have been opened, but in between
-    \G everything is allowed.
+    \G reverse order as they have been opened, but as long as they are
+    \G both active, everything is allowed.  These Gforth versions only
+    \G produce non-zero flags as results of @word{catch}ing some
+    \G exception, and the @i{flag} itself is the @code{throw}n ball
+    \G and can be re@code{throw}n.
     current-input @ >r swap current-input ! 1- dup >r
     ['] (restore-input) catch
-    dup IF  r> 0 ?DO  nip  LOOP  r> current-input ! first-throw on 0<>  EXIT  THEN
+    dup IF
+        r> 0 ?DO
+            nip LOOP
+        r> current-input ! first-throw on 0<> EXIT
+    THEN
     rdrop rdrop ;
 
 \ create terminal input block
@@ -190,9 +197,10 @@ terminal-input @       \ source -> terminal-input::source
 
 : query ( -- ) \ core-ext-obsolescent
     \G Make the user input device the input source. Receive input into
-    \G the Terminal Input Buffer. Set @code{>IN} to zero. OBSOLESCENT:
-    \G superceeded by @code{accept}.
-    clear-tibstack  refill 0= -39 and throw ;
+    \G the Terminal Input Buffer. Set @code{>IN} to zero. OBSOLETE:
+    \G This Forth-94 word has been de-standardized in Forth-2012.  It
+    \G is superceeded by @code{accept}.
+    clear-tibstack refill 0= -39 and throw ;
 
 \ load a file
 
@@ -200,14 +208,15 @@ defer line-end-hook ( -- ) \ gforth
 \G called at every end-of-line when text-interpreting from a file    
 \ alternatively we could use a wrapper for REFILL
 ' noop is line-end-hook
+Defer eof-warning
+' noop is eof-warning
 
 : read-loop1 ( i*x -- j*x )
     BEGIN  refill  WHILE  interpret line-end-hook REPEAT ;
 
 : read-loop ( i*x -- j*x ) \ gforth-internal
     \G refill and interpret a file until EOF
-    ['] read-loop1 bt-rp0-wrapper
-    state @ warning" EOF reached while compiling" ;
+    ['] read-loop1 bt-rp0-wrapper eof-warning ;
 
 Variable second-ctrl-c 0 second-ctrl-c !
 

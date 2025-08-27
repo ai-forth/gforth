@@ -1,7 +1,7 @@
 \ MINOS2 actors on Android
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2017,2018,2019,2020,2021,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2017,2018,2019,2020,2021,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -42,9 +42,15 @@ Variable buttonmask
     dup sf@ sfloat+ sf@ ;
 : 2sf! ( r1 r2 addr -- )
     dup sfloat+ sf! sf! ;
-: getXY ( index -- rx ry )
-    dup getX screen-xy cell+ @ s>f f-
-        getY screen-xy       @ s>f f- ;
+SDK_INT #35 >= [IF]
+    \ with API 35, the entire screen is rendered, so we don't need to correct here
+    : getXY ( index -- rx ry )
+	dup getX getY ;
+[ELSE]
+    : getXY ( index -- rx ry )
+	dup getX screen-xy cell+ @ s>f f-
+	    getY screen-xy       @ s>f f- ;
+[THEN]
 : samepos? ( rx ry -- flag )
     lastpos 2sf@ frot f- f**2 f-rot f- f**2 f+ samepos f< ;
 : ?samepos ( -- )
@@ -62,8 +68,7 @@ Variable xy$
     lastpos 2sf@ buttonmask @
     clicks 2* flags #lastdown bit@ -
     flags #pending -bit
-    grab-move? ?dup-IF  fswap gx-sum f+ fswap gy-sum f+
-	[: .clicked ;] vp-needed<>| EXIT  THEN
+    grab-move? ?dup-IF  gxy-sum z+ [: .clicked ;] vp-needed<>| EXIT  THEN
     top-act    ?dup-IF  .clicked  EXIT  THEN
     2drop fdrop fdrop ;
 

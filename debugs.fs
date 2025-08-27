@@ -1,7 +1,7 @@
 \ Simple debugging aids
 
 \ Authors: Bernd Paysan, Anton Ertl, Gerald Wodni, Neal Crook
-\ Copyright (C) 1995,1997,1999,2002,2003,2004,2005,2006,2007,2009,2011,2012,2013,2014,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,1999,2002,2003,2004,2005,2006,2007,2009,2011,2012,2013,2014,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -70,7 +70,7 @@ interpret/compile: ~~ ( -- ) \ gforth tilde-tilde
 \G Prints the source code location of the @code{~~} and the stack
 \G contents with @code{.debugline}.
 
-:noname ( -- )  stderr to debug-fid  defers 'cold ; IS 'cold
+:is 'cold ( -- )  stderr to debug-fid  defers 'cold ;
 
 \ code coverage helpers that are always present
 
@@ -137,14 +137,9 @@ s" You've reached a !!FIXME!! marker" exception constant FIXME#
     \G word that should never be reached
     FIXME# throw ;
 
-
 \ warn beginners that double numbers clash with floating points
 
-[IFUNDEF] ?warning \ fix compilation problem
-    Defer ?warning
-[THEN]
-
-:noname ( f xt -- )
+:is ?warning ( f xt -- )
     \ if f, output a warning by EXECUTEing xt
     swap warnings @ 0<> and if
 	[: cr warning-color current-view .sourceview ." : warning: " execute
@@ -152,7 +147,6 @@ s" You've reached a !!FIXME!! marker" exception constant FIXME#
 	warnings @ abs 4 >= warning-error and throw
 	exit then
     drop ;
-is ?warning
 
 : shadow-warning ( c-addr u nt -- c-addr u nt )
     dup >r name>string ." redefined " 2dup type ( c-addr u c-addr2 u2 )
@@ -176,9 +170,16 @@ is ?warning
     warnings @ >r warnings off
     sp@ fp@ 2>r 2dup warning-recs recognize 2r> rot >r
     fp! sp! r> 0<>  r> dup warnings ! 0<> and
-    ['] shadow-num-warning ?warning  2drop
+    ['] shadow-num-warning ?warning
+    s" xlerb" str= warning" 'xlerb' shall remain undefined"
 ; is check-shadow
 [then]
+
+\ in pedantic mode, warn if locals overshade existing words
+:is locals-warning  warnings @ abs 3 >= IF
+	sp@ >r latestnt name>string 2dup search-order
+	['] shadow-warning ?warning r> sp!
+    THEN ;
 
 : ?warn-dp ( -- )
     >num-state @ >num-state off 1 and 0= dpl @ 0>= and warnings @ abs 1 > and
@@ -189,6 +190,11 @@ is ?warning
 	." ' is a non-standard double: only trailing '.' standard" ;] ?warning ;
 
 ' ?warn-dp is ?warn#
+
+\ eof warning
+
+:is eof-warning ( -- )
+    state @ [: ." EOF reached while " get-state id. ;] ?warning ;
 
 \ replacing one word with another
 
@@ -273,7 +279,7 @@ Variable rec'[]
     \G or the recognizer that successfully parsed @var{"name"}
     parse-name (view') ;
 
-:noname  defers 'image rec'[] $free ; is 'image
+:is 'image  defers 'image rec'[] $free ;
 
 : kate-l:c ( line pos -- )
     swap ." -l " . ." -c " . ;
@@ -324,16 +330,19 @@ Variable rec'[]
     ELSE  nip nip  THEN
     -rot encode-view to replace-sourceview ;
 
+#22 Value rstack-offset \ different prompt words can have different offsets
+
 : prompt-ok ( -- )
     ."  ok"
     depth ?dup-if
         space 0 dec.r then
     fdepth ?dup-if
         ."  f:" 0 dec.r then
-    rp0 @ rp@ - cell/ 22 - ?dup-if
+    rp0 @ rp@ - cell/ rstack-offset - ?dup-if
         ."  r:" 0 dec.r then ;
 
-: prompt-text    state @ IF ."  compiled" EXIT THEN  prompt-ok ;
+: prompt-text ( -- )
+    case  get-state ['] interpreting of  prompt-ok  endof  id. 0 endcase ;
 
 : color-prompt ( -- )
     success-color prompt-text default-color ;
@@ -364,13 +373,15 @@ Variable rec'[]
 \ warn on compiling into space outside colon definitions
 
 [IFUNDEF] in-colon-def?
-    0 Value in-colon-def?
+    0 Value in-colon-def? ( -- flag ) \ gforth-experimental
+    \G allows to check if there currently is an active colon
+    \G definition where you can append code to.
 [THEN]
 
-:noname defers wrap!   true  to in-colon-def? ; is wrap!
-:noname defers :-hook  true  to in-colon-def? ; is :-hook
-:noname defers ;-hook2 false to in-colon-def? ; is ;-hook2
-:noname defers reset-dpp false to in-colon-def? ; is reset-dpp
+:is wrap! defers wrap!   true  to in-colon-def? ;
+:is :-hook defers :-hook  true  to in-colon-def? ;
+:is ;-hook2 defers ;-hook2 false to in-colon-def? ;
+:is reset-dpp defers reset-dpp false to in-colon-def? ;
 : level-check defers prim-check
     in-colon-def? 0= warning" Compiling outside a definition" ;
 ' level-check is prim-check

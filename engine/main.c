@@ -2,7 +2,7 @@
 
 
   Authors: Anton Ertl, Bernd Paysan, Jens Wilke, David Kühling
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -54,6 +54,33 @@
 #ifndef STANDALONE
 #include <locale.h>
 #endif
+
+
+#if defined(MAP_JIT)
+# include <pthread.h>
+// if JIT is enabled, set DEFAULT_TRIGGER to 0
+# define DEFAULT_TRIGGER 0
+# define jit_map_normal() ({ trigger_no_dynamic = DEFAULT_TRIGGER; map_extras = pthread_jit_write_protect_supported_np() ? 0 : MAP_JIT; })
+# define jit_map_code()   ({ trigger_no_dynamic = 1; map_extras = MAP_JIT; })
+# define jit_write_enable()  pthread_jit_write_protect_np(0)
+# define jit_write_disable() pthread_jit_write_protect_np(1)
+/* #elif defined(__OpenBSD__)
+# define MAP_JIT 0
+# define DEFAULT_TRIGGER 0
+# define jit_map_normal() trigger_no_dynamic = DEFAULT_TRIGGER
+# define jit_map_code()   trigger_no_dynamic = 0
+# define jit_write_enable() ({ debugp(stderr, "code -> RW %p:%lx\n", code_area, code_area_size); mprotect(code_area, code_area_size, PROT_READ | PROT_WRITE); })
+# define jit_write_disable() ({ debugp(stderr, "code -> RX %p:%lx\n", code_area, code_area_size); mprotect(code_area, code_area_size, PROT_READ | PROT_EXEC); })*/
+#else
+# define MAP_JIT 0
+# define DEFAULT_TRIGGER 0
+# define jit_map_normal() trigger_no_dynamic = DEFAULT_TRIGGER
+# define jit_map_code()   trigger_no_dynamic = 1
+# define jit_write_enable()
+# define jit_write_disable()
+#endif
+
+static int trigger_no_dynamic = DEFAULT_TRIGGER;
 
 /* output rules etc. for burg with --debug and --print-sequences */
 /* #define BURG_FORMAT*/
@@ -157,8 +184,11 @@ Cell die_on_signal=0;
 int ignore_async_signals=0;
 #ifndef INCLUDE_IMAGE
 static int clear_dictionary=0;
+#ifdef PAGESIZE
+UCell pagesize=PAGESIZE;
+#else
 UCell pagesize=1;
-Address dictguard; // guard page for dictionary
+#endif
 char *progname;
 #else
 char *progname = "gforth";
@@ -175,18 +205,21 @@ int map_32bit=0; /* mmap option, can be set to MAP_32BIT with --map_32bit */
 #define MAP_NORESERVE 0
 #endif
 
-static int map_noreserve=MAP_NORESERVE;
-
 #ifndef PROT_EXEC
 #define PROT_EXEC 0
 #endif
-static int prot_exec=PROT_EXEC;
+
+static int map_noreserve=MAP_NORESERVE;
+PER_THREAD int map_extras=0;
+PER_THREAD int prot_exec=PROT_EXEC;
 
 #define CODE_BLOCK_SIZE (2*1024*1024) /* !! overflow handling for -native */
 Address code_area=0;
 Cell code_area_size = CODE_BLOCK_SIZE;
 Address code_here; /* does for code-area what HERE does for the dictionary */
 Address start_flush=NULL; /* start of unflushed code */
+UCell generated_bytes=0;
+UCell generated_nop_bytes=0;
 PrimNum last_jump=0; /* if the last prim was compiled without jump, this
                         is it's PrimNum, otherwise this contains 0 */
 Label *ip_at=0; /* during execution of the currently compiled code ip
@@ -379,6 +412,15 @@ Cell groups[32] = {
 #define GROUPADD(n)
 };
 
+static void flush_to_here(void)
+{
+#ifndef NO_DYNAMIC
+  if (start_flush)
+    FLUSH_ICACHE((caddr_t)start_flush, code_here-start_flush);
+  start_flush=code_here;
+#endif
+}
+
 void gforth_compile_range(Cell *image, Cell size,
 			  Char *bitstring, Char *targets)
 {
@@ -388,6 +430,8 @@ void gforth_compile_range(Cell *image, Cell size,
   if(size<=0)
     return;
 
+  debugp(stderr, "compile code range %p:%lx\n", image, size);
+  jit_write_enable();
   for(i=k=0; k<steps; k++) {
     Char bitmask;
     for(bitmask=(1U<<(RELINFOBITS-1)); bitmask; i++, bitmask>>=1) {
@@ -403,7 +447,9 @@ void gforth_compile_range(Cell *image, Cell size,
     }
   }
 
-  finish_code();
+  compile_prim1(NULL);
+  flush_to_here();
+  jit_write_disable();
 }
 
 static unsigned char *gforth_relocate_range(Address sections[], Cell bases[],
@@ -413,7 +459,7 @@ static unsigned char *gforth_relocate_range(Address sections[], Cell bases[],
   int i, k;
   int steps=(((size-1)/sizeof(Cell))/RELINFOBITS)+1;
   unsigned char *targets=malloc_l(steps);
-  bzero(targets, steps);
+  memset(targets, 0, steps);
 
   for(i=k=0; k<steps; k++) {
     Char bitmask;
@@ -589,12 +635,12 @@ static Address verbose_malloc(Cell size)
   return r;
 }
 
-static void after_alloc(Address r, Cell size)
+static void after_alloc(char * description, Address r, Cell size)
 {
   if (r != (Address)-1) {
-    debugp(stderr, "success, address=%p\n", r);
+    debugp(stderr, "%s success, address=%p\n", description, r);
   } else {
-    debugp(stderr, "failed: %s\n", strerror(errno));
+    debugp(stderr, "%s failed: %s\n", description, strerror(errno));
   }
 }
 
@@ -615,7 +661,7 @@ static void after_alloc(Address r, Cell size)
 #endif
 
 #if defined(HAVE_MMAP)
-static Address alloc_mmap(Cell size)
+Address alloc_mmap(Cell size)
 {
   void *r=MAP_FAILED;
   static int dev_zero=-1;
@@ -631,20 +677,52 @@ static Address alloc_mmap(Cell size)
     r = MAP_FAILED;
     debugp(stderr, "open(\"/dev/zero\"...) failed (%s), no mmap; ", 
 	      strerror(errno));
-    after_alloc(r, size);
+    after_alloc("/dev/zero", r, size);
     return r;
   }
 #endif /* !defined(MAP_ANON) */
-  debugp(stderr,"try mmap(%p, $%lx, ..., dev_zero, ...); ", NULL, size);
-  if (MAP_32BIT && map_32bit)
-    r=mmap(0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|MAP_32BIT, dev_zero, 0);
-  if (r==MAP_FAILED)
-    r=mmap(0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve, dev_zero, 0);
-  after_alloc(r, size);
+  if (MAP_32BIT && map_32bit) {
+    debugp(stderr,"try mmap(%p, $%lx, %x, %x, %i, %i); ", (void*)0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras|MAP_32BIT, dev_zero, 0);
+    r=
+#ifdef PROT_RWX_FAIL
+      prot_exec ? ({ errno=EPERM; MAP_FAILED; }) :
+#endif
+      mmap(0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras|MAP_32BIT, dev_zero, 0);
+    after_alloc("RWX+32", r, size);
+  }
+  if (r==MAP_FAILED) {
+    debugp(stderr,"try mmap(%p, $%lx, %x, %x, %i, %i); ", (void*)0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+    r=
+#ifdef PROT_RWX_FAIL
+      prot_exec ? ({ errno=EPERM; MAP_FAILED; }) :
+#endif
+      mmap(0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+    after_alloc("RWX", r, size);
+  }
+  if (r==MAP_FAILED) {
+    if(trigger_no_dynamic) {
+      debugp(stderr,"disabling dynamic native code generation ");
+      no_dynamic = 1;
+#ifndef NO_DYNAMIC
+      init_ss_cost();
+#endif
+      prot_exec = 0;
+      debugp(stderr,"try mmap(%p, $%lx, %x, %x, %i, %i); ", (void*)0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+      r=
+#ifdef PROT_RWX_FAIL
+	prot_exec ? ({ errno=EPERM; MAP_FAILED; }) :
+#endif
+	mmap(0, size, prot_exec|PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+    } else {
+      debugp(stderr,"try mmap(%p, $%lx, %x, %x, %i, %i); ", (void*)0, size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+      r=mmap(0, size, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|map_noreserve|map_extras, dev_zero, 0);
+    }
+    after_alloc("RW", r, size);
+  }
   return r;  
 }
 
-static void page_noaccess(void *a)
+void page_noaccess(void *a)
 {
   /* try mprotect first; with munmap the page might be allocated later */
   debugp(stderr, "try mprotect(%p,$%lx,PROT_NONE); ", a, (long)pagesize);
@@ -664,16 +742,20 @@ static void page_noaccess(void *a)
 
 static inline size_t wholepage(size_t n)
 {
-  return (n+pagesize-1)&~(pagesize-1);
+  return (n+pagesize-1)& -pagesize;
 }
 
 static Address alloc_mmap_guard(Cell size)
 {
-  Address start;
+  Address start, dictguard;
   size = wholepage(size+pagesize);
   start=alloc_mmap(size);
-  dictguard=start+size-pagesize;
-  page_noaccess(dictguard);
+  if(start==MAP_FAILED) {
+    start=malloc(size-pagesize);
+  } else {
+    dictguard=start+size-pagesize;
+    page_noaccess(dictguard);
+  }
   return start;
 }
 
@@ -692,6 +774,8 @@ Address gforth_alloc(Cell size)
   return verbose_malloc(size);
 }
 
+Cell preamblesize=0;
+
 static void *dict_alloc_read(FILE *file, Cell imagesize, Cell dictsize, Cell offset)
 {
   void *image = MAP_FAILED;
@@ -703,19 +787,20 @@ static void *dict_alloc_read(FILE *file, Cell imagesize, Cell dictsize, Cell off
       void *image1;
       debugp(stderr, "mmap($%lx) succeeds, address=%p\n", (long)dictsize, image);
       debugp(stderr,"try mmap(%p, $%lx, RWX, MAP_FIXED|MAP_FILE, imagefile, 0); ", image, imagesize);
-      image1 = mmap(image, imagesize, PROT_EXEC|PROT_READ|PROT_WRITE, MAP_FIXED|MAP_FILE|MAP_PRIVATE|map_noreserve, fileno(file), 0);
-      after_alloc(image1,dictsize);
-#ifdef __ANDROID__
+      image1=
+#ifdef PROT_RWX_FAIL
+	PROT_EXEC ? ({ errno=EPERM; MAP_FAILED; }) :
+#endif
+	mmap(image, imagesize, PROT_EXEC|PROT_READ|PROT_WRITE, MAP_FIXED|MAP_FILE|MAP_PRIVATE|map_noreserve, fileno(file), 0);
+      after_alloc("image1 RWX", image1,dictsize);
+#if defined(__ANDROID__) || defined(_AIX)
       if (image1 == (void *)MAP_FAILED)
 	goto read_image;
 #endif
       if (image1 == (void *)MAP_FAILED) {
-        debugp(stderr,"disabling dynamic native code generation");
-        no_dynamic = 1;
-        prot_exec = 0;
         debugp(stderr,"try mmap(%p, $%lx, RW, MAP_FIXED|MAP_FILE, imagefile, 0); ", image, imagesize);
         image1 = mmap(image, imagesize, PROT_READ|PROT_WRITE, MAP_FIXED|MAP_FILE|MAP_PRIVATE|map_noreserve, fileno(file), 0);
-        after_alloc(image1,dictsize);
+        after_alloc("image1 RW", image1,dictsize);
       }
     }
   }
@@ -723,7 +808,7 @@ static void *dict_alloc_read(FILE *file, Cell imagesize, Cell dictsize, Cell off
   if (image == (void *)MAP_FAILED) {
     if((image = gforth_alloc(dictsize+offset)+offset) == NULL)
       return NULL;
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(_AIX)
   read_image: /* on Android, mmap will fail despite RWX allocs are possible */
 #endif
     rewind(file);  /* fseek(imagefile,0L,SEEK_SET); */
@@ -744,7 +829,7 @@ void gforth_free_dict()
   Cell image = (-pagesize) & (Cell)gforth_header;
 #ifdef HAVE_MMAP
   debugp(stderr,"try unmmap(%p, $%lx); ", (void*)image, dictsize);
-  if(!munmap((void*)image, dictsize)) {
+  if(!munmap((void*)image, wholepage(dictsize))) {
     debugp(stderr,"ok\n");
   }
 #else
@@ -932,6 +1017,22 @@ static PrimNum lookup_ss(PrimNum *start, int length,
   return -1;
 }
 
+/* primitives, where ip is dead at the start, so no ip update is needed */
+static PrimNum ip_dead[] = {N_semis,
+                            N_execute_semis,
+                            N_execute_semis,
+                            N_fast_throw};
+/* the first N_execute_semis is overwritten by the 2->1 version */
+
+static int MAYBE_UNUSED prim_ip_dead(PrimNum p)
+{
+  long i;
+  for (i=0; i<sizeof(ip_dead)/sizeof(ip_dead[0]); i++)
+    if (p==ip_dead[i])
+      return 1;
+  return 0;
+}
+
 static void prepare_super_table()
 {
   long i;
@@ -958,7 +1059,7 @@ static void prepare_super_table()
           if (is_relocatable(i)) {
             if (c->state_in==CANONICAL_STATE && c->state_out==CANONICAL_STATE) {
               /* this is actually from the ip-update series */
-              assert(ip_update0 == 0); /* no second occurence */
+              assert(ip_update0 == 0); /* no second occurrence */
               ip_update0 = i;
               min_ip_update = priminfos[i].min_ip_offset;
               max_ip_update = priminfos[i].max_ip_offset;
@@ -1001,6 +1102,12 @@ static void prepare_super_table()
           max_super = c->length;
         if (c->length >= 2)
           nsupers++;
+        if (c->offset == N_execute_semis && i != N_execute_semis) {
+          /* this particular hack works only if this assertion holds */
+          assert(ip_dead[1] == N_execute_semis);
+          ip_dead[1]=i;
+          debugp(stderr, "Another execute-;s implementation: %ld\n",i);
+        }
       }
     }
   }
@@ -1120,7 +1227,7 @@ static void check_prims(Label symbols1[])
 	 goto_p[0],symbols2[goto_p-symbols1],(long)goto_len);
   if ((goto_len < 0) ||
       memcmp(goto_p[0],symbols2[goto_p-symbols1],goto_len)!=0) { /* unequal */
-    no_dynamic=1;
+    no_dynamic = 1;
     debugp(stderr,"  not relocatable, disabling dynamic code generation\n");
     init_ss_cost();
     return;
@@ -1218,7 +1325,8 @@ static void check_prims(Label symbols1[])
 	     (long)pi->length, (long)pi->restlength);
 #endif
     };
-    while (j<(pi->length+pi->restlength)) {
+    int overall_length=pi->length+pi->restlength;
+    while (j<overall_length) {
       if (s1[j] != s2[j]) {
 	pi->start = NULL; /* not relocatable */
 #ifndef BURG_FORMAT
@@ -1292,19 +1400,11 @@ static DynamicInfo *add_dynamic_info()
 }
 #endif
 
-static void flush_to_here(void)
-{
-#ifndef NO_DYNAMIC
-  if (start_flush)
-    FLUSH_ICACHE((caddr_t)start_flush, code_here-start_flush);
-  start_flush=code_here;
-#endif
-}
-
 static void MAYBE_UNUSED  append_code(Address code, size_t length)
 {
   memmove(code_here,code,length);
   code_here += length;
+  generated_bytes += length;
 }
 
 static void MAYBE_UNUSED align_code(void)
@@ -1317,8 +1417,10 @@ static void MAYBE_UNUSED align_code(void)
   UCell maxpadding=MAX_PADDING;
   UCell offset = ((UCell)code_here)&(alignment-1);
   UCell length = alignment-offset;
-  if (length <= maxpadding)
+  if (length <= maxpadding) {
     append_code(nops+offset,length);
+    generated_nop_bytes += length;
+  }
 #endif /* defined(CODE_PADDING) */
 #endif /* defined(NO_DYNAMIC */
 }  
@@ -1421,13 +1523,23 @@ static int reserve_code_space(UCell size)
   if(((Cell)size)<0) size=100;
   if (code_area+code_area_size < code_here+size) {
     struct code_block_list *p;
+    int old_prot_exec = prot_exec;
+    prot_exec = PROT_EXEC;
     append_jump_previous();
     debugp(stderr,"Did not use %ld bytes in code block\n",
            (long)(code_area+code_area_size-code_here));
     flush_to_here();
+    jit_write_disable();
     if (*next_code_blockp == NULL) {
-      if((code_here = start_flush = code_area = gforth_alloc(code_area_size)) == NULL)
+      jit_map_code();
+      if((code_here = start_flush = code_area = gforth_alloc(code_area_size)) == NULL) {
+	jit_map_normal();
+	prot_exec = old_prot_exec;
 	return 1;
+      }
+      jit_write_enable();
+      jit_map_normal();
+      prot_exec = old_prot_exec;
       p = (struct code_block_list *)malloc_l(sizeof(struct code_block_list));
       *next_code_blockp = p;
       p->next = NULL;
@@ -1438,12 +1550,11 @@ static int reserve_code_space(UCell size)
       code_here = start_flush = code_area = p->block;
     }
     next_code_blockp = &(p->next);
+  } else {
+    debugp(stderr, "Don't reserve code size %ld, code_area=%p, code_ares_size=%ld, code_here=%p\n", size, code_area, code_area_size, code_here);
   }
   return 0;
 }
-
-/* primitives, where ip is dead at the start, so no ip update is needed */
-static PrimNum ip_dead[] = {N_semis, N_execute_semis, N_fast_throw};
 
 static Address append_prim(PrimNum p)
 {
@@ -1482,14 +1593,8 @@ static Address append_prim(PrimNum p)
         assert(superend == pi->superend);
       } 
     }
-    if (opt_ip_updates>1 && superend && !has_imm) {
-      long i;
-      for (i=0; i<sizeof(ip_dead)/sizeof(ip_dead[0]); i++)
-        if (p==ip_dead[i]) {
-          dead = 1;
-          break;
-        }
-    }
+    if (opt_ip_updates>1 && superend && !has_imm)
+      dead = prim_ip_dead(p);
     if (has_imm || (superend && !dead)) {
       inst_index += ci->length-1; /* -1 to correct for the +1 in other places */
       p += append_ip_update(pi->max_ip_offset);
@@ -1601,9 +1706,7 @@ DynamicInfo *decompile_prim3(Label *tcp)
       dyninfo = (DynamicInfo){tcp,-1,0,0,0,0};
     else {
       struct cost *c = &super_costs[p];
-      dyninfo = (DynamicInfo){tcp,0,p,c->state_in,c->state_out};
-      assert(c->state_in  == CANONICAL_STATE);
-      assert(c->state_out == CANONICAL_STATE);
+      dyninfo = (DynamicInfo){tcp,0,p,c->length,c->state_in,c->state_out};
     }
     di = &dyninfo;
   }
@@ -1628,21 +1731,6 @@ Cell fetch_decompile_prim(Cell *a_addr)
   if (c->length > 1)
     p = super2[p];
   return (Cell)(vm_prims[p]);
-}
-
-void finish_code(void)
-{
-  compile_prim1(NULL);
-  flush_to_here();
-}
-
-void finish_code_barrier(void)
-{
-  compile_prim1(NULL);
-#ifndef NO_DYNAMIC
-  append_jump();
-#endif
-  flush_to_here();
 }
 
 #if !(defined(DOUBLY_INDIRECT) || defined(INDIRECT_THREADED))
@@ -2062,7 +2150,6 @@ static void optimize_rewrite(Cell *instps[], PrimNum origs[], int ninsts)
         if (ndynamicinfos>1 &&
             ((UCell)(((Address)tc)-code_area)) < (UCell)code_area_size) {
           di[-1].length = ((Address)tc) - (Address)*(di[-1].tcp);
-          di[-1].end_state = startstate;
         }
         di->prim = p;
         di->seqlen = super_costs[p].length;
@@ -2170,7 +2257,9 @@ void compile_prim1(Cell *start)
 #endif /* !(defined(DOUBLY_INDIRECT) || defined(INDIRECT_THREADED)) */
 }
 
+#ifdef HAVE_LIBLTDL
 static int gforth_ltdlinited=0;
+#endif
 
 int gforth_init()
 {
@@ -2182,6 +2271,7 @@ int gforth_init()
   asm("fldcw %0" : : "m"(fpu_control));
 #endif /* defined(__i386) */
 
+  jit_map_normal();
 #ifdef MACOSX_DEPLOYMENT_TARGET
   setenv("MACOSX_DEPLOYMENT_TARGET", MACOSX_DEPLOYMENT_TARGET, 0);
 #endif
@@ -2216,7 +2306,7 @@ int gforth_init()
 #endif /* !defined(NO_DYNAMIC) */
 #endif /* defined(HAS_OS) */
 #endif
-  code_here = ((void *)0)+code_area_size;
+  code_here = ((void *)1)+code_area_size;
 
   get_winsize();
    
@@ -2248,7 +2338,6 @@ static FILE *openimage(char *fullfilename)
 /* global variables from checkimage */
 
 Char magic[8];
-Cell preamblesize=0;
 
 static FILE *checkimage(char *path, int len, char *imagename)
 {
@@ -2361,7 +2450,6 @@ ImageHeader* gforth_loader(char* imagename, char* path)
   Cell data_offset = offset_image ? 56*sizeof(Cell) : 0;
   UCell check_sum;
   FILE* imagefile=open_image_file(imagename, path);
-  int no_dynamic_orig = no_dynamic;
 
   if(imagefile == NULL) return NULL;
   if(gforth_init()) return NULL;
@@ -2371,8 +2459,8 @@ ImageHeader* gforth_loader(char* imagename, char* path)
   }
 
   set_stack_sizes(&header);
-  bzero(sections, sizeof(sections));
-  bzero(reloc_bits, sizeof(reloc_bits));
+  memset(sections, 0, sizeof(sections));
+  memset(reloc_bits, 0, sizeof(reloc_bits));
   
 #if HAVE_GETPAGESIZE
   pagesize=getpagesize(); /* Linux/GNU libc offers this */
@@ -2387,7 +2475,7 @@ ImageHeader* gforth_loader(char* imagename, char* path)
   bases[0]=(Cell)header.base;
 
   image = dict_alloc_read(imagefile, preamblesize+sizes[0],
-			  dictsize, data_offset);
+			  dictsize+preamblesize, data_offset);
   if(image==NULL) return NULL;
 
   vm_prims = gforth_engine(0 sr_call);
@@ -2447,6 +2535,10 @@ ImageHeader* gforth_loader(char* imagename, char* path)
     debugp(stderr, "section base=%p, dp=%p, size=%lx\n", section.base, section.dp, section.size);
     if(fread(sections[i], 1, sizes[i], imagefile) != sizes[i]) break;
   }
+#ifndef NO_DYNAMIC
+  reserve_code_space(0);
+#endif
+  int no_dynamic_orig = no_dynamic;
   no_dynamic |= no_dynamic_image;
   gforth_relocate(sections, reloc_bits, sizes, bases);
   no_dynamic = no_dynamic_orig;
@@ -2548,12 +2640,12 @@ static void print_diag()
 {
 
 #if !defined(HAVE_GETRUSAGE) || (!defined(HAS_ATOMIC) && !defined(HAS_SYNC))
-  fprintf(stderr, "*** missing functionality ***\n"
+  printf("*** missing functionality ***\n"
 #ifndef HAVE_GETRUSAGE
-	  "    no getrusage -> CPUTIME broken\n"
+	 "    no getrusage -> CPUTIME broken\n"
 #endif
 #if !defined(HAS_ATOMIC) && !defined(HAS_SYNC)
-	  "    no atomic operations -> !@ and co. broken\n"
+	 "    no atomic operations -> !@ and co. broken\n"
 #endif
 	  );
 #endif
@@ -2565,7 +2657,7 @@ static void print_diag()
 #endif
      )
     debugp(stderr, "relocs: %d:%d\n", relocs, nonrelocs);
-  fprintf(stderr, "*** %sperformance problems ***\n%s%s",
+  printf("*** %sperformance problems ***\n%s%s",
 #if defined(BUGGY_LL_CMP) || defined(BUGGY_LL_MUL) || defined(BUGGY_LL_DIV) || defined(BUGGY_LL_ADD) || defined(BUGGY_LL_SHIFT) || defined(BUGGY_LL_D2F) || defined(BUGGY_LL_F2D) || !(defined(FORCE_REG) || defined(FORCE_REG_UNNECESSARY)) || defined(BUGGY_LONG_LONG) || (NO_DYNAMIC_DEFAULT)
 	    "",
 #else
@@ -2822,6 +2914,8 @@ void gforth_printmetrics()
 {
   if (print_metrics) {
     long i;
+    fprintf(stderr, "%8ld native code bytes generated (including deleted code) without padding\n", generated_bytes - generated_nop_bytes);
+    fprintf(stderr, "%8ld native code bytes generated (including deleted code)\n", generated_bytes);
     fprintf(stderr, "code size = %8ld\n", dyncodesize());
 #ifndef STANDALONE
     for (i=0; i<sizeof(cost_sums)/sizeof(cost_sums[0]); i++)
@@ -3050,13 +3144,13 @@ Cell gforth_start(int argc, char ** argv)
 {
   char *path, *imagename;
 
+#ifdef HAVE_MCHECK
+  mcheck_init(debug_mcheck);
+#endif
   if(gforth_args(argc, argv, &path, &imagename))
     return -24; /* Invalid numeric argument */
   if(no_rc0)
     setenv("GFORTH_ENV", "off", 1);
-#ifdef HAVE_MCHECK
-  mcheck_init(debug_mcheck);
-#endif
   gforth_header = gforth_loader(imagename, path);
   if(gforth_header==NULL)
     return -59; /* allocate error */

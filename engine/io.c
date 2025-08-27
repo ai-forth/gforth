@@ -1,7 +1,7 @@
 /* direct key io driver
 
   Authors: Anton Ertl, Bernd Paysan
-  Copyright (C) 1995,1996,1997,1998,1999,2002,2003,2006,2007,2008,2009,2010,2012,2013,2016,2019,2022 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,1999,2002,2003,2006,2007,2008,2009,2010,2012,2013,2016,2019,2022,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -49,7 +49,7 @@ typedef unsigned int uint32_t;
 #endif
 #include <fcntl.h>
 #include <sys/file.h>
-#if defined(Solaris) && !defined(FIONREAD)
+#if (defined(__sun) || defined(__FreeBSD__)) && !defined(FIONREAD)
 #include <sys/filio.h>
 #endif
 #include <setjmp.h>
@@ -469,6 +469,8 @@ void prep_terminal ()
   if (terminal_prepped)
     return;
 
+  setvbuf(stdin, NULL, _IONBF, 0); /* terminals without buffering */
+  
   if (!isatty(tty))  {     /* added by MdG */
     terminal_prepped = 1;      /* added by MdG */
     return;      /* added by MdG */
@@ -615,6 +617,31 @@ void deprep_terminal ()
 }
 #endif  /* NEW_TTY_DRIVER */
 
+#if !defined(LEGACY_GF)
+long key_avail (FILE * stream)
+{
+  int tty = fileno(stream);
+  int chars_avail;
+  if(!terminal_prepped && stream == stdin) {
+    prep_terminal();
+  }
+  int result = ioctl(tty, FIONREAD, &chars_avail);
+  return (result==-1) ? -errno : chars_avail;
+}
+
+Cell getkey(FILE * stream)
+{
+  Cell result;
+
+  if(!terminal_prepped && stream == stdin) {
+    prep_terminal();
+  }
+
+  errno=0;
+  result = fgetc(stream);
+  return (result<0) ? IOR(1) : result;
+}
+#else
 /* an ungetc() variant where we can know that there is a character waiting:
    gf_ungetc: like ungetc
    gf_regetc: call when reading a char, but does not get the character
@@ -669,7 +696,6 @@ long key_avail (FILE *stream)
 
   if (gf_ungottenc(stream))
     return 1;
-  setvbuf(stream, NULL, _IONBF, 0);
   if(!terminal_prepped && stream == stdin)
     prep_terminal();
 
@@ -677,6 +703,8 @@ long key_avail (FILE *stream)
   if(isatty (tty)) {
     MAYBE_UNUSED int result = ioctl (tty, FIONREAD, &chars_avail);
   } else
+#else
+#warning FIONREAD undefined
 #endif
   {
     struct pollfd fds = { tty, POLLIN, 0 };
@@ -717,6 +745,7 @@ Cell getkey(FILE * stream)
     gf_regetc(stream);
   return result==0 ? IOR(1) : c;
 }
+#endif
 
 #ifdef STANDALONE
 void emit_char(char x)

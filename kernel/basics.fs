@@ -1,7 +1,7 @@
 \ kernel.fs    GForth kernel                        17dec92py
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke, Neal Crook
-\ Copyright (C) 1995,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2018,2019,2021,2022 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2004,2005,2006,2007,2008,2010,2011,2012,2013,2014,2015,2016,2018,2019,2021,2022,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -58,22 +58,6 @@ hex
 
 \ dictionary
 
-user-o current-section
-
-0 0
-cell uvar section-start
-cell uvar section-size
-cell uvar section-dp
-cell uvar section-name
-cell uvar locs[]
-cell uvar primbits
-cell uvar targets
-cell uvar codestart
-cell uvar lastnt
-
-Constant section-desc
-drop
-
 image-header current-section !
 image-header 4 cells + unlock cross-boot$[] >stack lock
 
@@ -81,7 +65,9 @@ image-header 4 cells + unlock cross-boot$[] >stack lock
     section-start 2@ + ;
 
 : usable-dictionary-end1 ( -- addr )
-    dictionary-end [ word-pno-size pad-minsize + ] Literal - ;
+    dictionary-end
+    [ word-pno-size pad-minsize + ] Literal
+    current-section @ image-header @ = and - ;
 
 defer usable-dictionary-end ( -- addr )
 ' usable-dictionary-end1 is usable-dictionary-end
@@ -267,7 +253,7 @@ defer catch ( x1 .. xn xt -- y1 .. ym 0 / z1 .. zn error ) \ exception
     execute 0 ;
 is catch
 
-defer throw ( y1 .. ym nerror -- y1 .. ym / z1 .. zn error ) \ exception
+defer throw ( y1 .. ym nerror -- y1 .. ym / z1 .. zn nerror ) \ exception
 \G If @i{nerror} is 0, drop it and continue.  Otherwise, transfer
 \G control to the next dynamically enclosing exception handler, reset
 \G the stacks accordingly, and push @i{nerror}.
@@ -286,13 +272,6 @@ is throw
 
 : c(abort") ( c-addr -- )
     abort-string ! -2 throw ;
-
-: (abort")
-    "lit >r
-    IF
-	r> abort-string ! -2 throw
-    THEN
-    rdrop ;
 
 defer ?warning ( f xt -- )
 
@@ -337,18 +316,14 @@ is ?warning
 [ [THEN] ]
 ;
 
-\ Strings						 22feb93py
-
-: "lit ( -- addr )
-  r> r> dup count + aligned >r swap >r ;
-
 \ HEX DECIMAL                                           2may93jaw
 
 : decimal ( -- ) \ core
-    \G Set @code{base} to &10 (decimal).  Don't use @code{decimal}, use
-    \G @code{base-execute} instead.
-    a base ! ;
+    \G Set @code{base} to #10 (decimal).  In many cases
+    \G @code{base-execute} is a better alternative.
+    #10 base ! ;
+
 : hex ( -- ) \ core-ext
-    \G Set @code{base} to &16 (hexadecimal).  Don't use @code{hex},
-    \G use @code{base-execute} instead.
-    10 base ! ;
+    \G Set @code{base} to $10 (hexadecimal).  In many cases
+    \G @code{base-execute} is a better alternative.
+    $10 base ! ;

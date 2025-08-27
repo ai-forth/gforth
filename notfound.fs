@@ -1,7 +1,7 @@
 \ legacy notfound for people who liked the old interface
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2015,2016,2017,2018,2019,2021 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018,2019,2021,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,9 +20,7 @@
 
 : notfound: ( "name" -- )
     \G special defer word to recover the input lexeme
-    Create ['] no.extensions ,
-    [: >r input-lexeme 2@ r> @ execute-;s ;] set-does>
-    ['] defer-is set-to ;
+    Defer ['] no.extensions latestxt defer! ;
 
 notfound: interpret-notfound1 ( addr u -- )
 \g Legacy hook for words not found during interpretation

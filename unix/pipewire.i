@@ -23,13 +23,15 @@
 #define SPA_SENTINEL
 #define SPA_DEPRECATED
 #define SPA_WARN_UNUSED_RESULT
+#define SPA_UNUSED
 
 %apply int { int32_t }
 %apply unsigned int { uint32_t }
 %apply long long { int64_t, size_t }
-%apply SWIGTYPE * { spa_invoke_func_t, va_list }
+%apply unsigned long long { uint64_t }
+%apply SWIGTYPE * { spa_invoke_func_t, spa_source_io_func_t, spa_source_idle_func_t, spa_source_event_func_t, spa_source_timer_func_t, spa_source_signal_func_t, va_list }
 
-// exec: sed -e 's/" pipewire" add-lib/" pipewire-0.3" add-lib/g' -e 's/^c-library/cs-vocabulary pipewire\n\nget-current also pipewire definitions\n\nc-library/g' -e 's/^end-c-library/end-c-library\nprevious set-current/g' -e 's/add-lib/add-lib\ns" ((struct pw_:x.spx[arg0]" ptr-declare $+[]!/g'
+// exec: sed -e 's/" pipewire" add-lib/" pipewire-0.3" add-lib/g' -e 's/^c-library/cs-vocabulary pipewire\nget-current >r also pipewire definitions\n\nc-library/g' -e 's/^end-c-library/end-c-library\nprevious r> set-current/g' -e 's/add-lib/add-lib\ns" ((struct pw_:x.spx[arg0]" ptr-declare $+[]!/g'
 
 %include <pipewire/array.h>
 %include <pipewire/client.h>

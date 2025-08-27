@@ -16,7 +16,7 @@ A        [x] simplify API
  B       [x] examples
 AB       [x] Documentation in manual
   G      [x] Modify env-recognizer to use ${HOME} instead of $HOME to avoid collision with hex-numbers like $BEEF
- B       [ ]*update to current word names etc.
+ B       [x] update to current word names etc.
 ABGO [ ]*Documentation for Undocumented features
  B       [x] Document so far, that other programmers can understand the code and complete the documentation
 A        [d] Search changelogs for features
@@ -59,7 +59,7 @@ A    [x] see-code should work properly with zero-length primitives
  B   [ ] Build issues
  B       [x] Build extra libs only on request
  B       [x] Build text-only on request
- B       [ ] configure stops if gcc is really LLVM
+ B       [x] configure stops if gcc is really LLVM
   G      [x] Summary for BUILD-FROM-SCRATCH 
 AB       [ ] Try building on non-Linux machines (cfarm)
 
@@ -184,7 +184,7 @@ in all source files.
 
 -----
 Authors: Anton Ertl, Gerald Wodni, Bernd Paysan, Jens Wilke, Neal Crook
-Copyright (C) 1995,1996,1997,1999,2003,2007,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+Copyright (C) 1995,1996,1997,1999,2003,2007,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 This file is part of Gforth.
 

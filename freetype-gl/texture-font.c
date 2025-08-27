@@ -29,7 +29,17 @@
 # define __BIG_ENDIAN 4321
 # define __BYTE_ORDER __LITTLE_ENDIAN
 #else
-# include <endian.h>
+# ifdef __sun
+#  define __LITTLE_ENDIAN 1234
+#  define __BIG_ENDIAN 4321
+#  ifdef __sparc
+#   define __BYTE_ORDER __BIG_ENDIAN
+#  else
+#   define __BYTE_ORDER __LITTLE_ENDIAN
+#  endif
+# else
+#  include <endian.h>
+# endif
 #endif
 #include "distance-field.h"
 #include "texture-font.h"
@@ -244,10 +254,7 @@ texture_font_generate_kerning( texture_font_t *self,
 
 int
 texture_is_color_font( texture_font_t *self) {
-    static const uint32_t tag = FT_MAKE_TAG('C', 'B', 'D', 'T');
-    unsigned long length = 0;
-    FT_Load_Sfnt_Table(self->face, tag, 0, NULL, &length);
-    return length != 0;
+    FT_HAS_COLOR(self->face);
 }
 
 // -------------------------------------------------- texture_font_set_size ---
@@ -988,7 +995,7 @@ texture_font_load_glyph_gi( texture_font_t * self,
             error = FT_Glyph_To_Bitmap( &ft_glyph, FT_RENDER_MODE_LCD, 0, 1);
             break;
         case 4:
-            error = FT_Glyph_To_Bitmap( &ft_glyph, FT_RENDER_MODE_NORMAL, 0, 1);
+	    error = FT_Glyph_To_Bitmap( &ft_glyph, FT_RENDER_MODE_NORMAL, 0, 1);
             break;
         }
 

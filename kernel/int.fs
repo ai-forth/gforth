@@ -25,9 +25,6 @@
 \ \ input stream primitives                       	23feb93py
 
 : >comp  ( xt -- ) name>compile execute ;
-: no-to ( xt -- )
-    \ default to action: report an error ASAP (even right when COMPILE,ing)
-    #-12 throw ;
 ' execute set-optimizer
 
 require ./basics.fs 	\ bounds decimal hex ...
@@ -316,9 +313,8 @@ Defer where,
 forth-wordlist current !
 
 : find-name-in  ( c-addr u wid -- nt | 0 ) \ gforth
-    \G search the word list identified by @i{wid} for the definition
-    \G named by the string at @i{c-addr u}. Return its @i{nt}, if
-    \G found, otherwise 0.
+    \G Find the name @i{c-addr u} in the word list @i{wid}. Return its
+    \G @i{nt}, if found, otherwise 0.
     execute dup IF  drop  THEN ;
 
 : search-wordlist ( c-addr count wid -- 0 | xt +-1 ) \ search
@@ -373,13 +369,12 @@ $01000000. 1 cells 8 = [IF] #32 dlshift [THEN] #1. d- dconstant lcount-mask
 	drop ['] compile-only-error
     then ;
 
-' noop Alias ((name>)) ( nfa -- cfa )
+' [noop] Alias ((name>)) ( nfa -- cfa )
 
 struct
     cell% field >hmlink
     cell% field >hmcompile,
     cell% field >hmto
-\    cell% field >hmdefer@
     cell% field >hmextra
     cell% field >hm>int
     cell% field >hm>comp
@@ -427,7 +422,8 @@ method name>interpret ( nt -- xt ) \ tools-ext name-to-interpret
 \G @i{nt}.
 
 method name>compile ( nt -- w xt ) \ tools-ext name-to-compile
-\G @i{w xt} is the compilation token for the word @i{nt}.
+\G @i{w xt} is the compilation token for the word @i{nt}
+\G (@pxref{Compilation token}).
 
 method name>string ( nt -- addr u ) \ tools-ext name-to-string
     \g @i{addr count} is the name of the word represented by @i{nt}.
@@ -437,16 +433,30 @@ method name>link ( nt1 -- nt2 / 0 ) \ gforth name-to-link
 
 drop Constant hmsize \ vtable size
 
-: defer@ ( xt-deferred -- xt ) \ core-ext new-defer-fetch
-    \G @i{xt} represents the word currently associated with the deferred
-    \G word @i{xt-deferred}.
-    3 swap (to) ;
-opt: ?fold1 3 swap (to), ;
+: to-access:exec ( xt -- ) @ swap (to) ;
+: to-access:,    ( xt -- ) lits# IF   @ lits> (to),  EXIT  THEN  does, ;
 
-: initwl ( wid -- ) \ gforth-internal
-    \G initialises a vocabulary. Mapped to +TO
-    1 swap (to) ;
-opt: ?fold1 1 swap (to), ;
+1 to-access: value+! ( n ... xt-value -- ) \ gforth-internal  value-plus-store
+    \G Adds @i{n} to the value of the location indicated by
+    \G @i{... xt-value}.
+2 to-access: defer@ ( ... xt-deferred -- xt ) \ core-ext defer-fetch
+    \G If @i{xt-deferred} belongs to a word defined with @code{defer},
+    \G @i{xt} represents the word currently associated with the
+    \G deferred word @i{xt-deferred}.@* If @i{xt-deferred} belongs to
+    \G another defer-flavoured word (e.g., a defer-flavoured field),
+    \G @i{xt} is the word associated with the location indicated by
+    \G @i{... xt-deferred} (e.g., for a defer-flavoured field @i{...}
+    \G is the structure address).@* If @i{xt-deferred} is the xt of a
+    \G word that is not defer-flavoured, throw -21 (Unsupported
+    \G operation).
+3 to-access: defer! ( xt xt-deferred -- ) \ core-ext defer-store If
+    \G @i{xt-deferred} belongs to a word defined with @code{defer}, it
+    \G is changed to execute @i{xt} on execution.@* If @i{xt-deferred}
+    \G belongs to another defer-flavoured word (e.g., a
+    \G defer-flavoured field), the location associated with
+    \G @i{... xt-deferred} is changed to execut @i{xt}.@* If
+    \G @i{xt-deferred} is the xt of a word that is not
+    \G defer-flavoured, throw -21 (Unsupported operation).
 
 : >extra ( nt -- addr )
     >namehm @ >hmextra ;
@@ -545,9 +555,9 @@ const Create ???
     dup xt? 0= IF  drop ['] ???  THEN ;
 
 has? new-cfa [IF]
-0 0 0 0 field >body ( xt -- a_addr ) \ core to-body
-\G Get the address of the body of the word represented by @i{xt} (the
-\G address of the word's data field).
+0 0 0 0 field >body ( xt -- a-addr ) \ core to-body
+\G @i{a-addr} is the address of the body (aka parameter field or data
+\G field) of the word represented by @i{xt}
 drop drop
 
 0 0 0 0 field body> ( xt -- a_addr )
@@ -612,9 +622,7 @@ cell% -1 * 0 0 field body> ( xt -- a_addr )
     parse-name name-too-short? forth-recognize '-error ;
 
 : '    ( "name" -- xt ) \ core	tick
-    \g @i{xt} represents @i{name}'s interpretation
-    \g semantics. Perform @code{-14 throw} if the word has no
-    \g interpretation semantics.
+    \g @i{xt} represents @i{name}'s interpretation semantics.
     (') name?int ;
 
 \ \ the interpreter loop				  mar92py
@@ -637,7 +645,7 @@ defer int-execute ( ... xt -- ... )
 \ like EXECUTE, but restores and saves ERRNO if present
 ' execute IS int-execute
 
-: interpret ( ... -- ... ) \ gforth
+: interpret ( ... -- ... ) \ gforth-internal
     \ interpret/compile the (rest of the) input buffer
     [ cell 4 = [IF] ] false >l [ [THEN] ] \ align LP stack for 32 bit engine
     r> >l rp@ backtrace-rp0 !
@@ -887,7 +895,7 @@ Variable rec-level
 : gforth ( -- )
     ." Gforth " version-string type cr
     ." Authors: Anton Ertl, Bernd Paysan, Jens Wilke et al., for more type `authors'" cr
-    (c) ."  2024 Free Software Foundation, Inc." cr
+    (c) ."  2025 Free Software Foundation, Inc." cr
     ." License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>" cr
     ." Gforth comes with ABSOLUTELY NO WARRANTY; for details type `license'"
 [ has? os [IF] ]

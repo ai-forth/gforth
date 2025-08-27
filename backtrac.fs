@@ -1,7 +1,7 @@
 \ backtrace handling
 
 \ Authors: Anton Ertl, Bernd Paysan, Gerald Wodni
-\ Copyright (C) 1999,2000,2003,2004,2006,2007,2012,2013,2016,2017,2018,2019,2020,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1999,2000,2003,2004,2006,2007,2012,2013,2016,2017,2018,2019,2020,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -34,7 +34,7 @@
     else \ throw by signal handler with insufficient information
 	handler @ cell- \ beyond that we know nothing
 	extra-backtrace# ?dup-IF  cells -
-	    rp0 @ [ forthstart 9 cells + ]L @ - $FFF + -$1000 and umax
+	    rp0 @ [ forthstart section-desc + #2 cells + ]L @ - $FFF + -$1000 and umax
 	    BEGIN  dup @ 0=  WHILE  cell+  REPEAT
 	THEN
     then

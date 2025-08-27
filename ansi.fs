@@ -1,7 +1,7 @@
 \ ansi.fs      Define terminal attributes              20may93jaw
 
 \ Authors: Bernd Paysan, Anton Ertl, Gerald Wodni, Neal Crook
-\ Copyright (C) 1995,1996,1997,1998,2001,2003,2007,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2001,2003,2007,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -75,9 +75,11 @@ decimal
 : A>    BEGIN over -1 <> WHILE or REPEAT nip ;
 
 User Attr   0 Attr !
+UValue attr? -1 to attr?
 
 : (Attr!) ( attr -- )
     \ set attribute
+    attr? 0= IF  drop  EXIT  THEN
     dup Attr @ = IF drop EXIT THEN
     dup $6600 = Attr @ 0= and IF drop EXIT THEN
     dup Attr !
@@ -168,18 +170,19 @@ $Variable term-rgb$
     s" TERM_PROGRAM" getenv s" Apple_Terminal" str= 0= and
     is-terminal? and ;
 
+: string>rgb ( addr u -- rgb )
+    '/' $split '/' $split
+    2 umin ['] s>number $10 base-execute drop >r
+    2 umin ['] s>number $10 base-execute drop >r
+    2 umin ['] s>number $10 base-execute drop
+    8 lshift r> or 8 lshift r> or ;
+
 : term-rgb@ ( -- rgb )
     \ read color value returned from terminal
     100 0 ?DO  key? ?LEAVE  1 ms  LOOP \ wait a maximum of 100 ms
     BEGIN  key?  WHILE  key #esc =  UNTIL  ELSE  0  EXIT  THEN
     BEGIN  key?  WHILE  key term-rgb$ c$+!  REPEAT
-    term-rgb$ $@ ':' $split 2nip
-    '/' $split '/' $split
-    2 umin ['] s>number $10 base-execute drop >r
-    2 umin ['] s>number $10 base-execute drop >r
-    2 umin ['] s>number $10 base-execute drop
-    8 lshift r> or 8 lshift r> or
-    term-rgb$ $free ;
+    term-rgb$ $@ ':' $split 2nip string>rgb term-rgb$ $free ;
 
 : term-color? ( n -- rgb )
     \ query terminal's colors by number
@@ -202,7 +205,7 @@ $Variable term-rgb$
     dup $FF and swap 8 rshift
     ( ) $FF and swap rot ;
 
-$0 Value default-bg
+0 Value default-bg
 
 theme: uncolored-mode ( -- ) \ gforth
 \G This mode does not set colors, but uses the default ones.
@@ -220,6 +223,7 @@ false to error-hl-ul
 false to error-hl-inv
 <a invers a> to status-color
 <a invers a> to compile-color
+<a invers a> to postpone-color
 
 theme: light-mode ( -- ) \ gforth
 \G color theme for white background
@@ -229,13 +233,14 @@ true  to white?
 <a defaultcolor >fg defaultcolor >bg a> to default-color
 <a red >fg defaultcolor >bg a> to error-color
 <a magenta >fg defaultcolor >bg a> to warning-color
-<a green >fg defaultcolor >bg a> to info-color
+<a cyan >fg defaultcolor >bg a> to info-color
 <a green >fg defaultcolor >bg a> to success-color
 <a defaultcolor >fg defaultcolor >bg bold a> to input-color
 <a red >fg defaultcolor >bg underline a> to error-hl-ul
 <a red >fg defaultcolor >bg invers a> to error-hl-inv
 <a white >fg blue >bg bold a> to status-color
 <a white >fg magenta >bg bold a> to compile-color
+<a white >fg red >bg bold a> to postpone-color
 
 theme: dark-mode ( -- ) \ gforth
 \G color theme for black background
@@ -245,33 +250,69 @@ false to white?
 <a defaultcolor >fg defaultcolor >bg a> to default-color
 <a red >fg defaultcolor >bg bold a> to error-color
 <a yellow >fg defaultcolor >bg bold a> to warning-color
-<a green >fg defaultcolor >bg bold a> to info-color
+<a cyan >fg defaultcolor >bg bold a> to info-color
 <a green >fg defaultcolor >bg bold a> to success-color
 <a defaultcolor >fg defaultcolor >bg bold a> to input-color
 <a red >fg defaultcolor >bg underline bold a> to error-hl-ul
 <a red >fg defaultcolor >bg invers bold a> to error-hl-inv
 <a white >fg blue >bg bold a> to status-color
 <a white >fg magenta >bg bold a> to compile-color
+<a white >fg red >bg bold a> to postpone-color
 
 uncolored-mode
 
 : magenta-input ( -- ) \ gforth
     \G make input color easily recognizable (useful in presentations)
-    $A601 white? + to input-color ;
+    [ <a magenta >fg defaultcolor >bg bold a> ]L white? + to input-color ;
+: default-input ( -- ) \ gforth
+    \G make input color easily recognizable (useful in presentations)
+    [ <a defaultcolor >fg defaultcolor >bg bold a> ]L to input-color ;
 
-: auto-color ( -- )
-    is-terminal? is-color-terminal? and 0= if
-        \ TODO: no terminal - switch to other output class
-	uncolored-mode  EXIT
-    then
-    is-xterm? if term-bg? else default-bg then
-    rgb-split + + $17F u> IF
-	light-mode
-    ELSE
-	dark-mode
+: rgb>mode  ( rgb -- )
+    rgb-split + + $17F u> IF  light-mode  ELSE  dark-mode  THEN ;
+
+0 Value term-rgb?
+
+slowvoc on wordlist slowvoc off constant gforth-init
+
+: set-colors { xt: color -- }
+    attr? IF
+	current-theme >r
+	light-mode  color
+	dark-mode   color
+	r> to current-theme !
     THEN ;
 
-:noname auto-color defers 'cold ; is 'cold
+get-current gforth-init set-current
+: light     attr? IF  light-mode     0 to term-rgb? THEN ;
+: dark      attr? IF  dark-mode      0 to term-rgb? THEN ;
+: uncolored attr? IF  uncolored-mode 0 to term-rgb? THEN ;
+: magenta   ['] magenta-input set-colors ;
+: default   ['] default-input set-colors ;
+: auto ;
+set-current
+
+: ?gforth-init ( -- )
+    s" GFORTH_INIT" getenv 2dup d0<> if
+	action-of forth-recognize >r
+	gforth-init is forth-recognize ['] evaluate catch IF 2drop THEN
+	r> is forth-recognize
+    else  2drop  then ;
+
+: auto-color ( -- )
+    uncolored-mode \ default mode
+    is-terminal? is-color-terminal? and 0<>
+    dup 2 and is-xterm? and  to term-rgb?  to attr?
+    ?gforth-init  attr? 0= ?EXIT
+    term-rgb? if
+	s" SSH_CONNECTION" getenv d0= if
+	    term-bg? rgb>mode  0 to term-rgb?
+	then
+    else
+	default-bg rgb>mode
+    then ;
+
+:is 'cold auto-color defers 'cold ;
 
 \ scrolling etc: (thanks to Ulrich Hoffmann)
 

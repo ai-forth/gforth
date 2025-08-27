@@ -1,7 +1,7 @@
 \ 2-stage division and optimizing division by constants
 
 \ Authors: Anton Ertl
-\ Copyright (C) 2020,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -173,64 +173,58 @@ constant staged/-size ( -- u ) \ gforth staged-slash-size
     next-section staged/-size small-allot previous-section {: addr :}
     divisor addr stage1 ]] addr stage2 [[ ;
 
-: opt-/f ( xt -- )
-    lits# 1 = if
-        lits> dup 0> if
-            dup pow2? if
-                ctz ]] literal arshift [[ drop exit then
-            ['] /f-stage1m ['] /f-stage2m lit/, drop exit then
-	>lits then
-    fold2-1 ;
+' fold2-1 foldn-from: opt-/f
+[: ( xt -- )
+    lits> dup 0> if
+	dup pow2? if
+	    ctz ]] literal arshift [[ drop exit then
+	['] /f-stage1m ['] /f-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-/f optimizes /f
 
-: opt-u/ ( xt -- )
-    lits# 1 = if
-        lits> dup 0<> if
-            dup pow2? if
-                ctz ]] literal rshift [[ drop exit then
-            ['] u/-stage1m ['] u/-stage2m lit/, drop exit then
-        >lits then
-    fold2-1 ;
+' fold2-1 foldn-from: opt-u/
+[: ( xt -- )
+    lits> dup 0<> if
+	dup pow2? if
+	    ctz ]] literal rshift [[ drop exit then
+	['] u/-stage1m ['] u/-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-u/ optimizes u/
 
-: opt-modf ( xt -- )
-    lits# 1 = if
-        lits> dup 0> if
-            dup pow2? if
-                1- ]] literal and [[ drop exit then
-            ['] /f-stage1m ['] modf-stage2m lit/, drop exit then
-	>lits then
-    fold2-1 ;
+' fold2-1 foldn-from: opt-modf
+[: ( xt -- )
+    lits> dup 0> if
+	dup pow2? if
+	    1- ]] literal and [[ drop exit then
+	['] /f-stage1m ['] modf-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-modf optimizes modf
 
-: opt-umod ( xt -- )
-    lits# 1 = if
-        lits> dup 0<> if
-            dup pow2? if
-                1- ]] literal and [[ drop exit then
-            ['] u/-stage1m ['] umod-stage2m lit/, drop exit then
-        >lits then
-    fold2-1 ;
+' fold2-1 foldn-from: opt-umod
+[: ( xt -- )
+    lits> dup 0<> if
+	dup pow2? if
+	    1- ]] literal and [[ drop exit then
+	['] u/-stage1m ['] umod-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-umod optimizes umod
 
-: opt-/modf ( xt -- )
-    lits# 1 = if
-        lits> dup 0> if
-            dup pow2? if
-                dup 1- ]] dup literal and swap [[ ctz ]] literal arshift [[
-                drop exit then
-            ['] /f-stage1m ['] /modf-stage2m lit/, drop exit then
-	>lits then
-    fold2-2 ;
+' fold2-2 foldn-from: opt-/modf
+[: ( xt -- )
+    lits> dup 0> if
+	dup pow2? if
+	    dup 1- ]] dup literal and swap [[ ctz ]] literal arshift [[
+	    drop exit then
+	['] /f-stage1m ['] /modf-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-/modf optimizes /modf
 
-: opt-u/mod ( xt -- )
-    lits# 1 = if
-        lits> dup 0<> if
-            dup pow2? if
-                dup 1- ]] dup literal and swap [[ ctz ]] literal rshift [[
-                drop exit then
-            ['] u/-stage1m ['] u/mod-stage2m lit/, drop exit then
-        >lits then
-    fold2-2 ;
+' fold2-2 foldn-from: opt-u/mod
+[: ( xt -- )
+    lits> dup 0<> if
+	dup pow2? if
+	    dup 1- ]] dup literal and swap [[ ctz ]] literal rshift [[
+	    drop exit then
+	['] u/-stage1m ['] u/mod-stage2m lit/, drop exit then
+    >lits noopt-compile, ;] 1 set-fold#
 ' opt-u/mod optimizes u/mod

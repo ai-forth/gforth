@@ -1,7 +1,7 @@
 \ Hashed dictionaries                                  15jul94py
 
 \ Authors: Bernd Paysan, Anton Ertl, Jens Wilke
-\ Copyright (C) 1995,1998,2000,2003,2006,2007,2009,2013,2017,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2006,2007,2009,2013,2017,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -108,8 +108,8 @@ Defer hash-alloc ( addr -- addr )
 : table-reveal ( nfa wid -- )
     2dup (nocheck-reveal) (reveal ;
 
-Create hashvoc-table ' hash-reveal , ' drop , ' n/a , ' n/a , ' hash-reveal ,
-Create tablevoc-table ' table-reveal , ' drop , ' n/a , ' n/a , ' table-reveal ,
+Create hashvoc-table ' hash-reveal , ' drop , ' n/a , ' hash-reveal , ' n/a ,
+Create tablevoc-table ' table-reveal , ' drop , ' n/a , ' table-reveal , ' n/a ,
 
 ' [noop] hashvoc-table to-class: hashvoc-to
 ' [noop] tablevoc-table to-class: tablevoc-to

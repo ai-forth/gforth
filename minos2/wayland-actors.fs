@@ -1,7 +1,7 @@
 \ MINOS2 actors on Wayland
 
 \ Author: Bernd Paysan
-\ Copyright (C) 2017,2019,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2017,2019,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -37,10 +37,10 @@ Variable lasttime
 
 \ handle scrolling
 
-:noname ( time axis val -- )
+:is b-scroll ( time axis val -- )
     rot dup lasttime !@ - twoclicks u<
     IF  1 +to clicks  clicks *  ELSE  0 to clicks  THEN  #-60 /
-    ev-xy 2@ swap coord>f coord>f top-act .scrolled ; IS b-scroll
+    ev-xy 2@ swap coord>f coord>f top-act .scrolled ;
 
 \ handle clicks
 
@@ -53,7 +53,7 @@ Variable lasttime
     lastpos 2@ swap coord>f coord>f buttonmask l@ lle
     clicks 2* flags #lastdown bit@ -
     flags #pending -bit
-    grab-move? ?dup-IF  .clicked  EXIT  THEN
+    grab-move? ?dup-IF  gxy-sum z+ [: .clicked ;] vp-needed<>| EXIT  THEN
     top-act    ?dup-IF  .clicked  EXIT  THEN
     2drop fdrop fdrop ;
 
@@ -65,7 +65,7 @@ Variable xy$
     1 sfloats -LOOP
     xy$ ;
 
-:noname ( -- )
+:is ?looper-timeouts ( -- )
     XTime lasttime @ - twoclicks >= IF
 	flags #pending -bit@ IF
 	    send-clicks
@@ -73,12 +73,13 @@ Variable xy$
 	flags #clearme -bit@ IF
 	    0 to clicks
 	THEN
-    THEN ; is ?looper-timeouts
+    THEN ;
 
 Create >button 0 c, 2 c, 1 c, 7 c, 8 c, 3 c, 4 c, 5 c,
 DOES> + c@ ;
 
-:noname { time b mask -- }
+:is b-button { time b mask -- }
+    event( ." button event: mask=" mask h. ." button=" b h. cr )
     mask IF  \ button pressend
 	buttonmask b 7 and >button +bit
 	top-act IF  ev-xy 2@ 1 >xy$ buttonmask l@ lle top-act .touchdown  THEN
@@ -87,13 +88,14 @@ DOES> + c@ ;
     ELSE \ button released
 	?samepos  time lasttime !
 	flags #lastdown -bit@  IF
+	    event( ." send downclick" cr )
 	    1 +to clicks  send-clicks  flags #clearme +bit  THEN
 	buttonmask b 7 and >button -bit
-	top-act IF ev-xy 2@ 1 >xy$ buttonmask l@ lle top-act .touchup  THEN
+	top-act IF  ev-xy 2@ 1 >xy$ buttonmask l@ lle top-act .touchup  THEN
     THEN
-; is b-button
+;
 
-:noname ( time x y -- )
+:is b-motion ( time x y -- )
     ev-xy 2!  ev-time !
     flags #pending bit@  ev-xy 2@ samepos? 0= and IF
 	send-clicks  0 to clicks
@@ -102,17 +104,17 @@ DOES> + c@ ;
 	[: grab-move? .touchmove ;] vp-needed<>|  EXIT
     THEN
     top-act IF  ev-xy 2@ 1 >xy$ buttonmask l@ lle top-act .touchmove  THEN
-; is b-motion
+;
 
-:noname ( x y -- )
+:is dnd-move ( x y -- )
     swap coord>f coord>f
     top-act ?dup-IF  .dndmove  ELSE  fdrop fdrop  THEN
-; is dnd-move
+;
 
-:noname ( x y addr u -- )
+:is dnd-drop ( x y addr u -- )
     2swap swap coord>f coord>f
     top-act ?dup-IF  .dnddrop  ELSE  2drop fdrop fdrop  THEN
-; is dnd-drop
+;
 
 \ key handling
 

@@ -1,7 +1,7 @@
 \ open URL
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2023 Free Software Foundation, Inc.
+\ Copyright (C) 2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -42,7 +42,7 @@ require ./os-name.fs
 
 : 0$! ( addr u cstr-addr -- )
     >r 1+ over 0= IF  2drop "\0"  THEN
-    save-mem over + 1- 0 swap c! r> !@
+    save-mem over + 1- 0 swap c! r> atomic!@
     ?dup-IF  free throw  THEN ;
 
 [IFDEF] android

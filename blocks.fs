@@ -1,7 +1,7 @@
 \ A less simple implementation of the blocks wordset. 
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook, Jens Wilke
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2011,2012,2016,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2008,2011,2012,2016,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -65,10 +65,8 @@ User block-offset ( -- addr ) \ gforth
     dup buffer-struct %size buffers * erase
     buffers 0 ?DO dup buffer-block on next-buffer LOOP drop ;
 
-:noname ( -- )
-    defers 'cold
-    block-cold
-; is 'cold
+:is 'cold ( -- )
+    defers 'cold block-cold ;
 
 :noname ( -- ) defers 'image  block-buffers off ; is 'image
 
@@ -276,7 +274,7 @@ true constant block \ environment- environment
 true constant block-ext
 set-current
 
-' bye defered? [IF]
+' bye deferred? [IF]
     :noname ( -- ) \ tools-ext
 	\ Return control to the host operating system (if any).
 	['] flush catch-nobt drop defers bye ; is bye

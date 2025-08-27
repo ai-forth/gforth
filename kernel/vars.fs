@@ -1,7 +1,7 @@
 \ VARS.FS      Kernal variables
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook, Jens Wilke
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -44,9 +44,9 @@ hex \ everything now hex!                               11may93jaw
 : warn! ( x addr -- ) ! oam-warning ;
 opt: drop postpone ! oam-warning ;
 
-\                  to         +to      addr     defer@   defer!
-Create !-table     ' ! A,     ' +! A,  ' n/a A, ' n/a A, ' warn! A,
-Create defer-table ' warn! A, ' n/a A, ' n/a A, ' @ A,   ' ! A,
+\                  to         +to      defer@   defer!     addr
+Create !-table     ' ! A,     ' +! A,  ' n/a A, ' warn! A, ' [noop] A,
+Create defer-table ' warn! A, ' n/a A, ' @ A,   ' ! A,     ' [noop] A,
 
 : >uvalue ( xt -- addr ) \ gforth-internal to-uvalue
     \G @i{Xt} is the xt of a word @i{x} defined with @code{uvalue};
@@ -57,7 +57,7 @@ Create defer-table ' warn! A, ' n/a A, ' n/a A, ' @ A,   ' ! A,
     \G optimizations that assume that uvalues can only be accessed
     \G through their name.
     >body @ up@ + ;
-opt: ?fold1 >body @ postpone up@ postpone lit+ , ;
+fold1: >body @ postpone up@ postpone lit+ , ;
 
 : to:exec ( .. u xt1 xt2 -- .. ) rot >r 2@ r> cells + >r execute r> perform ;
 : to:,    ( u xt2 -- ) 2@ rot cells + @ >r compile, r> compile, ;
@@ -81,6 +81,8 @@ opt: ?fold1 >body @ postpone up@ postpone lit+ , ;
 : 2constant, ( xt -- )
     execute 2lit, ;
 : 2Constant ( w1 w2 "name" -- ) \ double two-constant
+    \G Define @i{name}.@*
+    \G @i{name} execution: @i{( -- w1 w2 )}
     Create 2,
     ['] 2@ set-does>
     ['] 2constant, set-optimizer ;
@@ -162,6 +164,23 @@ AUser lp0 ( -- a-addr ) \ gforth
 
 AUser throw-entry  \ pointer to task-specific signal handler
 
+user-o current-section
+
+0 0
+cell uvar section-start
+cell uvar section-size
+cell uvar section-dp
+cell uvar section-name
+cell uvar locs[]
+cell uvar primbits
+cell uvar targets
+cell uvar codestart
+cell uvar lastnt
+cell uvar litstack
+
+Constant section-desc
+drop
+
 : handler ( -- addr )
     \ pointer to last throw frame
     sps@ cell+ ;
@@ -209,18 +228,18 @@ User >num-state ( -- a-addr ) \ gforth-internal
 0 >num-state !
 
 User state ( -- a-addr ) \ core,tools-ext
-\G @code{User} variable -- @i{a-addr} is the address of a cell
-\G containing the compilation state flag. 0 => interpreting, -1 =>
-\G compiling.  A program shall not directly alter the value of
-\G @code{state}. The following Standard words alter the value in
-\G @code{state}: @code{:} (colon) @code{;} (semicolon) @code{abort}
-\G @code{quit} @code{:noname} @code{[} (left-bracket) @code{]}
-\G (right-bracket) @code{;code}. Don't use @code{state}! For an
-\G alternative see @ref{Interpretation and Compilation Semantics}.
-\ Recommended reading: @cite{@code{State}-smartness--Why it is evil
-\ and how to exorcise it},
-\ @url{http://www.complang.tuwien.ac.at/papers/ertl98.ps.gz}; short
-\ version: Don't use @code{state}!
+\G Don't use @word{state}!  @word{State} is the state of the text
+\G interpreter, and ordinary words should work independently of it; in
+\G particular, @word{state} does not tell you whether the
+\G interpretation semantics or compilation semantics of a word are
+\G being performed.  See @cite{@code{State}-smartness--Why it is evil
+\G and how to exorcise it}.  For an alternative to @word{state}-smart
+\G words, see @ref{How to define combined words}.@*
+\G @i{A-addr} is the address of a cell containing the compilation
+\G state flag. 0 => interpreting, -1 => compiling.  A standard program
+\G must not store into @word{state}, but instead use @word{[} and
+\G @word{]}.
+
 0 state !
 
 UValue dp               \ initialized at boot time with section-dp
@@ -229,7 +248,7 @@ UValue dp               \ initialized at boot time with section-dp
                         \ (i.e. any throw caught by quit)
 
 Variable warnings ( -- addr ) \ gforth
-\G set warnings level to
+\G Set warnings level to
 \G @table @code
 \G @item 0
 \G turns warnings off
@@ -238,7 +257,7 @@ Variable warnings ( -- addr ) \ gforth
 \G @item -2
 \G turns beginner warnings on
 \G @item -3
-\G pedantic warnings on
+\G turns pedantic warnings on
 \G @item -4
 \G turns warnings into errors (including beginner warnings)
 \G @end table

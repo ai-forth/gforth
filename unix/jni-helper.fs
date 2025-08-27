@@ -15,7 +15,7 @@ host? [IF] gforth-class: [THEN]
 \ jni-sfield: POWER_SERVICE POWER_SERVICE Ljava/lang/String;
 
 jni-method: get_SDK get_SDK ()I
-host? [IF] : SDK_INT clazz .get_SDK ~~ ; [ELSE] #30 Value SDK_INT [THEN]
+host? [IF] : SDK_INT clazz .get_SDK ; [ELSE] #30 Value SDK_INT [THEN]
 
 jni-method: getSystemService getSystemService (Ljava/lang/String;)Ljava/lang/Object;
 jni-method: getWindow getWindow ()Landroid/view/Window;
@@ -57,6 +57,7 @@ jni-field: cameraPath cameraPath Ljava/lang/String;
 jni-field: shortcutname shortcutname Ljava/lang/String;
 jni-field: shortcutfile shortcutfile Ljava/lang/String;
 jni-field: shortcuticon shortcuticon Ljava/lang/String;
+jni-field: insets insets Landroid/view/WindowInsets;
 
 jni-class: android/os/Handler
 jni-method: post post (Ljava/lang/Runnable;)Z
@@ -72,6 +73,18 @@ jni-method: getWindowManager getWindowManager ()Landroid/view/WindowManager;
 
 jni-class: android/view/WindowManager
 jni-method: getDefaultDisplay getDefaultDisplay ()Landroid/view/Display;
+SDK_INT 30 >= [IF]
+    jni-method: getCurrentWindowMetrics getCurrentWindowMetrics ()Landroid/view/WindowMetrics;
+    
+    jni-class: android/view/WindowMetrics
+    jni-method: getBounds getBounds ()Landroid/graphics/Rect;
+    jni-method: getWindowInsets getWindowInsets ()Landroid/view/WindowInsets;
+
+    jni-class: android/view/WindowInsets$Type
+    jni-static: ime ime ()I
+    jni-static: statusBars statusBars ()I
+    jni-static: systemBars systemBars ()I
+[THEN]
 
 jni-class: android/view/Display
 jni-method: getRotation getRotation ()I
@@ -105,6 +118,18 @@ jni-field: xdpi xdpi F
 jni-field: ydpi ydpi F
 jni-field: density density F
 jni-field: scaledDensity scaledDensity F
+
+SDK_INT #30 >= [IF]
+    jni-class: android/view/WindowInsets
+    jni-method: getInsets getInsets (I)Landroid/graphics/Insets;
+    jni-method: getInsetsIgnoringVisibility getInsetsIgnoringVisibility (I)Landroid/graphics/Insets;
+
+    jni-class: android/graphics/Insets
+    jni-field: itop top I
+    jni-field: ileft left I
+    jni-field: iright right I
+    jni-field: ibottom bottom I
+[THEN]
 
 jni-class: android/view/inputmethod/InputMethodManager
 
@@ -294,9 +319,10 @@ SDK_INT 10 u<= [IF]
 	ELSE 0 0 THEN ref> ;
     : setclip ( addr u -- )
 	make-jstring clazz .clipboardManager >o setText ref> ;
-\	make-jstring clazz .clipboardManager >o
-\	js" text" swap newPlainText setPrimaryClip
-\	ref> ;
+\	2dup
+\	[: 2dup 6 0 DO +x/string dup 0<= ?LEAVE  LOOP
+\	    >r nip over - type r> IF ." …" THEN ;] $tmp make-jstring -rot make-jstring
+\	clazz .clipboardManager >o newPlainText setPrimaryClip ref> ;
 [THEN]
 : paste ( -- )
     clipboard@ dup IF  paste$ $! ctrl Y inskey  ELSE  2drop  THEN ;

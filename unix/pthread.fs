@@ -1,7 +1,7 @@
 \ posix threads
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -30,8 +30,10 @@ c-library pthread
     \c #include <setjmp.h>
     \c #include <stdio.h>
     \c #include <signal.h>
-    \c #ifndef FIONREAD
-    \c #include <sys/socket.h>
+    \c #if defined(__sun) || defined(__FreeBSD__)
+    \c #include <sys/filio.h>
+    \c #else
+    \c #include <sys/ioctl.h>
     \c #endif
     \c #ifdef __x86_64
     \c #ifdef FORCE_SYMVER
@@ -98,20 +100,35 @@ c-library pthread
     \c /* optional: CPU affinity */
     \c #include <sched.h>
     \c int stick_to_core(int core_id) {
+    \c   int result=EINVAL;
     \c #ifdef HAVE_PTHREAD_SETAFFINITY_NP
-    \c   cpu_set_t cpuset;
-    \c   int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
-    \c 
-    \c   if (core_id < 0 || core_id >= num_cores)
-    \c     return EINVAL;
-    \c   
-    \c   CPU_ZERO(&cpuset);
-    \c   CPU_SET(core_id, &cpuset);
-    \c   
-    \c   return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    \c #if defined(__NetBSD__)
+    \c #define cpu_set_t cpuset_t
+    \c #define CPUSETSIZE cpuset_size(cpusetp)
+    \c #define CPU_ZERO(cset) cpuset_zero(cset)
+    \c #define CPU_SET(ci, cset) cpuset_set(ci, cset)
+    \c #define CPUSET_DESTROY(cset) cpuset_destroy(cset)
+    \c   cpu_set_t * cpusetp=cpuset_create();
     \c #else
-    \c   return 0;
+    \c #define CPUSETSIZE sizeof(cpu_set_t)
+    \c #define CPUSET_DESTROY(cset)
+    \c #define cpusetp &cpuset
+    \c   cpu_set_t cpuset;
     \c #endif
+    \c   int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    \c
+    \c   if (core_id < 0 || core_id >= num_cores) {
+    \c     goto err_exit;
+    \c   }
+    \c   
+    \c   CPU_ZERO(cpusetp);
+    \c   CPU_SET(core_id, cpusetp);
+    \c   
+    \c   result=pthread_setaffinity_np(pthread_self(), CPUSETSIZE, cpusetp);
+    \c err_exit:
+    \c   CPUSET_DESTROY(cpusetp);
+    \c #endif
+    \c   return result;
     \ if there's no such function, don't do anything
     \c }
 
@@ -163,7 +180,7 @@ require ./libc.fs
 require set-compsem.fs
 
 User pthread-id
--1 cells pthread+ uallot drop
+-1 cells pthread+ aligned uallot drop
 
 host? [IF]
     pthread-id pthread_self
@@ -436,7 +453,7 @@ synonym sleep halt ( task -- ) \ gforth-experimental
 
 \ key for pthreads
 
-User keypollfds pollfd 2* cell- uallot drop
+User keypollfds pollfd 2* cell- aligned uallot drop
 
 :noname defers 'image
     keypollfds pollfd 2* erase
@@ -444,27 +461,31 @@ User keypollfds pollfd 2* cell- uallot drop
     epiper off
     epipew off
     wake# off
+    0 to prepare-cb#
+    0 to parent-cb#
+    0 to child-cb#
 ; is 'image
 
 : prep-key ( -- )
     keypollfds >r
-    stdin fileno    POLLIN r> fds!+ >r
-    epiper @ fileno POLLIN r> fds!+ drop ;
+    infile-id fileno POLLIN r> fds!+ >r
+    epiper @  fileno POLLIN r> fds!+ drop ;
 
 : thread-key ( -- key )
     prep-key
-    BEGIN  key? winch? @ or 0= WHILE  keypollfds 2 -1 poll drop
+    BEGIN  key? 0= WHILE  keypollfds 2 -1 poll drop
 	    keypollfds pollfd + revents w@ POLLIN and IF  ?events  THEN
-    REPEAT  winch? @ IF  EINTR  ELSE  defers key-ior  THEN ;
+	keypollfds revents w@ POLLIN POLLHUP or and UNTIL  THEN
+    defers key-ior ;
 
 ' thread-key is key-ior
 
-:noname defers 'cold
+:is 'cold defers 'cold
     host? IF
 	atfork-cbs atfork-init
 	pthread-id pthread_self epiper create_pipe
 	preserve key-ior  preserve deadline
-    THEN ; is 'cold
+    THEN ;
 
 host? [IF] atfork-cbs atfork-init [THEN]
 

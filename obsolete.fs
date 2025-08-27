@@ -1,7 +1,7 @@
 \ some obsolete code that is not needed anywhere else
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2017,2019,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2017,2019,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -143,13 +143,16 @@ inline: le-uxd@ ( c-addr -- ud ) ]] xd@ xdle [[ ;inline obsolete
 
 \ legacy rectype stuff
 
-: rectype>int  ( rectype -- xt ) >body @ ;
-: rectype>comp ( rectype -- xt ) cell >body + @ ;
-: rectype>post ( rectype -- xt ) 2 cells >body + @ ;
+: rectype>int  ( rectype -- xt ) \ gforth-obsolete
+    >body @ ;
+: rectype>comp ( rectype -- xt ) \ gforth-obsolete
+    cell >body + @ ;
+: rectype>post ( rectype -- xt ) \ gforth-obsolete
+    2 cells >body + @ ;
 
 : rectype ( int-xt comp-xt post-xt -- rectype ) \ gforth-obsolete
     \G create a new unnamed recognizer token
-    noname translate: latestnt ; 
+    noname translate: latestxt ; 
 
 : rectype: ( int-xt comp-xt post-xt "name" -- ) \ gforth-obsolete
     \G create a new recognizer table
@@ -254,7 +257,9 @@ synonym create-interpret/compile create ( "name" -- ) \ gforth-obsolete
     endif ;
 
 [IFUNDEF] in-colon-def?
-    0 Value in-colon-def?
+    0 Value in-colon-def? ( -- flag ) \ gforth-experimental
+    \G allows to check if there currently is an active colon
+    \G definition where you can append code to.
 [THEN]
 
 : (const-does>) ( w*uw r*ur uw ur target "name" -- )
@@ -276,7 +281,7 @@ synonym create-interpret/compile create ( "name" -- ) \ gforth-obsolete
     POSTPONE (const-does>)
     POSTPONE ;
     noname : POSTPONE rdrop
-    latestnt r> cell+ ! \ patch the literal
+    latestxt r> cell+ ! \ patch the literal
 ; immediate
 
 

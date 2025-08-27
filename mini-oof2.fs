@@ -1,7 +1,7 @@
 \ Mini-OOF2, using current object+Gforth primitives    09jan12py
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2012,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -42,9 +42,8 @@ latestxt optimizes sf@o+
 \ template for methods and ivars
 Create o# 0 ,  DOES> @ o+ ;
 opt: ( xt -- ) >body @ lit, postpone o+ ;
-s" Invalid method for this class" exception Constant !!inv-method!!
 : ?valid-method ( offset class -- offset )
-    cell- @ over u<= !!inv-method!! and throw ;
+    cell- @ over u<= #-21 and throw ;
 : m>body ( xt class xtsel -- )
     >body @ over ?valid-method + ;
 fold1: ( xt class xtsel -- ) >body @ lit, postpone + ;

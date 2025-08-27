@@ -1,7 +1,7 @@
 /* common header file
 
   Authors: Bernd Paysan, Anton Ertl, David Kühling, Jens Wilke, Neal Crook
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -392,17 +392,6 @@ typedef Label *Xt;
 #define rpTOS (rp[0])
 
 typedef struct {
-  Cell next_task;
-  Cell prev_task;
-  Cell save_task;
-  Cell* sp0;
-  Cell* rp0;
-  Float* fp0;
-  Address lp0;
-  Xt *throw_entry;
-} user_area;
-
-typedef struct {
   Address base;		/* base address of image (0 if relocatable) */
   UCell dict_size;
   Address image_dp;	/* all sizes in bytes */
@@ -412,6 +401,7 @@ typedef struct {
   Address sect_targets;
   Address sect_codestart;
   Address sect_last_header;
+  Address sect_litstack;
   UCell data_stack_size;
   UCell fp_stack_size;
   UCell return_stack_size;
@@ -427,6 +417,18 @@ typedef struct {
   Label *label_base;      /* base of DOUBLE_INDIRECT labels[], for comp-i.fs */
 } ImageHeader;
 /* the image-header is created in main.fs */
+
+typedef struct {
+  Cell next_task;
+  Cell prev_task;
+  Cell save_task;
+  Cell* sp0;
+  Cell* rp0;
+  Float* fp0;
+  Address lp0;
+  Xt *throw_entry;
+  ImageHeader *current_section;
+} user_area;
 
 typedef struct {
   Address base;
@@ -553,8 +555,8 @@ Address gforth_alloc(Cell size);
 char *cstr(Char *from, UCell size);
 char *tilde_cstr(Char *from, UCell size);
 Cell opencreate_file(char *s, Cell wfam, int flags, Cell *wiorp);
-DCell timeval2us(struct timeval *tvp);
-DCell timespec2ns(struct timespec *tvp);
+DCell gf_timeval2us(struct timeval *tvp);
+DCell gf_timespec2ns(struct timespec *tvp);
 void cmove(Char *c_from, Char *c_to, UCell u);
 void cmove_up(Char *c_from, Char *c_to, UCell u);
 Cell compare(Char *c_addr1, UCell u1, Char *c_addr2, UCell u2);
@@ -692,16 +694,28 @@ extern double asinh(double r1);
 extern double acosh(double r1);
 #endif
 #ifndef HAVE_ECVT
-/* extern char* ecvt(double x, int len, int* exp, int* sign);*/
+#if defined(_AIX) && defined(_NOTHROW)
+extern char *_NOTHROW(ecvt, (double, int, int *, int *));
+#else
+extern char* ecvt(double x, int len, int* exp, int* sign);
+#endif
 #endif
 #ifndef HAVE_MEMMOVE
-/* extern char *memmove(char *dest, const char *src, long n); */
+#if defined(_AIX) && defined(_NOTHROW)
+extern void *_NOTHROW(memmove, (void *, const void *, size_t));
+#else
+extern char *memmove(void *dest, const void *src, size_t n);
+#endif
 #endif
 #ifndef HAVE_SINCOS
 extern void sincos(double x, double *s, double *c);
 #endif
 #ifndef HAVE_ECVT_R
+# ifdef _AIX
+extern int _NOTHROW(ecvt_r, (double x, int ndigits, int* exp, int* sign, char *buf, int len));
+# else
 extern int ecvt_r(double x, int ndigits, int* exp, int* sign, char *buf, size_t len);
+# endif
 #endif
 #ifndef HAVE_POW10
 extern double pow10(double x);

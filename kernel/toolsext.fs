@@ -1,5 +1,5 @@
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke, Neal Crook
-\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2012,2013,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1998,2000,2003,2005,2007,2009,2010,2012,2013,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -73,13 +73,13 @@ UNLOCK Tlast @ swap Tlast ! LOCK
 \ Interpretative Structuren                            30apr92py
 
 : [defined] ( "<spaces>name" -- flag ) \ tools-ext bracket-defined
-    \G returns true if name is found in current search order
+    \G returns true if name is found in current search order.  Immediate word.
     sp@ fp@ 2>r
     parse-name forth-recognize translate-nt?
     2r> rot >r fp! sp! r> ; immediate
 ' [defined] alias defined immediate
 : [undefined] ( "<spaces>name" -- flag ) \ tools-ext bracket-undefined
-    \G returns false if name is found in current search order
+    \G returns false if name is found in current search order.  Immediate word.
      postpone [defined] 0= ; immediate
 
 : scanif ( -- )

@@ -1,7 +1,7 @@
 \ freetype GL helper stuff
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2014,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -95,8 +95,8 @@ Variable fonts[] \ stack of used fonts
     GL_TEXTURE_2D atlas-bgra texture_atlas_t-id l@ glBindTexture edge linear
     atlas-bgra upload-atlas-tex ;
 
-:noname defers reload-textures
-    gen-atlas-tex gen-atlas-tex-bgra ; is reload-textures
+:is reload-textures defers reload-textures
+    gen-atlas-tex gen-atlas-tex-bgra ;
 
 \ render font into vertex buffers
 
@@ -322,9 +322,9 @@ $[]Variable >tc[]
     >r @ 0= IF  rdrop  EXIT  THEN
     r> $@ third $FF and sfloats /string drop l@ tuck select ;
 
-Defer >tc :noname ( from to -- ) >tc[] translate! ; is >tc
+Defer >tc :is >tc ( from to -- ) >tc[] translate! ;
 Defer >tc2 ( to -- ) ' drop is >tc2
-Defer >sc :noname ( from to -- ) >sc[] translate! ; is >sc
+Defer >sc :is >sc ( from to -- ) >sc[] translate! ;
 : >tc@ ( from -- to ) >tc[] translate@ ;
 : >sc@ ( from -- to ) >sc[] translate@ ;
 
@@ -422,6 +422,7 @@ Variable segment-lens[]
 ${GFORTH_IGNLIB} s" true" str= 0= [IF]
     hb_buffer_create Value hb-buffer
     hb-buffer hb_language_get_default hb_buffer_set_language
+    hb-buffer HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS hb_buffer_set_cluster_level
 [ELSE]
     0 Value hb-buffer
 [THEN]

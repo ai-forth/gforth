@@ -1,7 +1,7 @@
 \ recognizer-based interpreter                       05oct2011py
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -32,31 +32,46 @@
 \ and the table contains three actions (as array of three xts):
 \ interpret it, compile it, postpone it.
 
-: lit, ( n -- ) postpone Literal ;
-: 2lit, ( n -- ) postpone 2literal ;
+' >lits Alias lit, ( x -- ) \ gforth
+\G This is a non-immediate variant of @word{literal}@*
+\G Execution semantics: Compile the following semantis:@*
+\G Compiled semantics: ( @i{ -- x} ).
+
+: 2lit, ( x1 x2 -- ) postpone 2literal ;
+\G This is a non-immediate variant of @word{2literal}@*
+\G Execution semantics: Compile the following semantis:@*
+\G Compiled semantics: ( @i{ -- x1 x2} ).
 
 : no.extensions  ( -- ) #-13 throw ;
 
 : do-translate ( ... translator -- ... ) \ gforth-internal
     state @ abs cells + @ execute-;s ;
 : translate: ( int-xt comp-xt post-xt "name" -- ) \ gforth-experimental
-    \G create a new recognizer table.  Items are in order of
-    \G @var{STATE} value, which are 0 or negative.  Up to 7 slots
-    \G are available for extensions.
+    \G Defines @i{name}, a translator containing @i{int-xt},
+    \G @i{comp-xt}, and @i{post-xt}.  In all the following
+    \G descriptions @i{data} is the data that the recognizer pushes
+    \G below the translator.@*
+    \G Executing @i{int-xt} @samp{( @i{... data -- ...} )} performs
+    \G the interpretation semantics represented by @i{data xt-name}.@*
+    \G Executing @i{comp-xt} @samp{( @i{... data -- ...} )} performs
+    \G the compilation semantics represented by @i{data xt-name}.@*
+    \G Executing @i{post-xt} @samp{( @i{data -- } )} compiles the
+    \G compilation semantics represented by @i{data xt-name}.
     Create swap rot , , , 7 0 DO  ['] no.extensions ,  LOOP
     ['] do-translate set-does> ;
 
 0 Value translate-fallback-error \ set to true to prevent fallback
 
-Create >postpone ( translator -- ) \ gforth-experimental
+Create postponing ( translator -- ) \ gforth-experimental
 \G perform postpone action of translator
 2 cells ,
 DOES> @ over >does-code ['] do-translate = IF
       + @ execute-;s  THEN
   \ fallback for combined translators
-  translate-fallback-error IF  #-21 throw
-  ELSE  true warning" translator not defined by translate:"  THEN
-  cell/ negate state !@ >r execute r> state ! ;
+  translate-fallback-error IF  #-21 throw  THEN
+  true warning" translator not defined by translate:"
+  cell/ dup state @ abs = IF  drop execute-;s  THEN
+  negate state !@ >r execute r> state ! ;
 
 : name-compsem ( ... nt -- ... )
     \ perform compilation semantics of nt
@@ -68,24 +83,25 @@ forth-wordlist is rec-nt
 :noname name?int  execute-;s ;
 ' name-compsem
 :noname  lit, postpone name-compsem ;
-translate: translate-nt ( i*x nt -- j*x ) \ gforth-experimental
-\G translate a name token
+translate: translate-nt ( ... nt -- ... ) \ gforth-experimental
+\G Translate @i{nt}.  The @i{...} are there because the interpretation
+\G or compilation semantics of @i{nt} might have a stack effect.
 
 ' noop
 ' lit,
 :noname lit, postpone lit, ;
-translate: translate-num ( x -- | x ) \ gforth-experimental
+translate: translate-num ( x -- ... ) \ gforth-experimental
 \G translate a number
 
 ' noop
 ' 2lit,
 :noname 2lit, postpone 2lit, ;
-translate: translate-dnum ( dx -- | dx ) \ gforth-experimental
+translate: translate-dnum ( dx -- ... ) \ gforth-experimental
 \G translate a double number
 
-: ?found ( token|0 -- token|never ) \ gforth-experimental
-    \G performs an undefined word @code{throw} if the @var{token} is 0.
-    dup 0= IF  #-13 throw  THEN ;
+: ?found ( token|0 -- token ) \ gforth-experimental
+    \G @code{throw}s -13 (undefined word) if @var{token} is 0.
+    dup 0= #-13 and throw ;
 : translate-nt? ( token -- flag )
     \G check if name token; postpone action may differ
     dup IF  >body 2@ ['] translate-nt >body 2@ d=  THEN ;
@@ -119,7 +135,7 @@ translate: translate-dnum ( dx -- | dx ) \ gforth-experimental
     \G Create a named stack with at least @var{n} cells space.
     drop $Variable ;
 : do-stack: ( x1 .. xn n xt "name" -- )
-    >r dup stack: r> set-does> latestnt >body set-stack ;
+    >r dup stack: r> set-does> latestxt >body set-stack ;
 : stack ( n -- stack ) \ gforth-experimental
     \G Create an unnamed stack with at least @var{n} cells space.
     drop align here 0 , ;
@@ -142,7 +158,9 @@ translate: translate-dnum ( dx -- | dx ) \ gforth-experimental
 ( ' rec-num ' rec-nt 2 combined-recognizer: default-recognize ) \ see pass.fs
 \G The system recognizer
 Defer forth-recognize ( c-addr u -- ... translate-xt ) \ recognizer
-\G The system recognizer
+\G The system recognizer: @word{forth-recognize} is a @word{defer}red
+\G word that contains a recognizer (sequence).  The system's text
+\G interpreter calls @word{forth-recognize}.
 ' minimal-recognize is forth-recognize
 
 : [ ( -- ) \  core	left-bracket
@@ -155,5 +173,5 @@ Defer forth-recognize ( c-addr u -- ... translate-xt ) \ recognizer
 
 : postpone ( "name" -- ) \ core
     \g Compiles the compilation semantics of @i{name}.
-    parse-name forth-recognize ?found >postpone
+    parse-name forth-recognize ?found postponing
 ; immediate restrict

@@ -1,7 +1,7 @@
 \ libcc.fs	foreign function interface implemented using a C compiler
 
 \ Authors: Bernd Paysan, Anton Ertl, David Kühling
-\ Copyright (C) 2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -134,7 +134,7 @@ require string.fs
 \ these words are generally useful and used by at least one user
 
 : scan-back { c-addr u1 c -- c-addr u2 } \ gforth
-    \G The last occurence of @i{c} in @i{c-addr u1} is at
+    \G The last occurrence of @i{c} in @i{c-addr u1} is at
     \G @i{c-addr}+@i{u2}@minus{}1; if it does not occur, @i{u2}=0.
     c-addr u1 1 mem-do
 	i c@ c = if
@@ -557,6 +557,10 @@ create gen-call-types
     ." c_str2gforth_str(" gen-wrapped-void
     ." ," gen-par-sp ." ," gen-par-sp ." )" ;
 
+: gen-wrapped-ws ( pars c-name fp-change1 sp-change1 -- fp-change sp-change )
+    ." wc_str2gforth_str(" gen-wrapped-void
+    ." , (Char**)&(" gen-par-sp ." ), (UCell*)&(" gen-par-sp ." ))" ;
+
 : gen-wrapped-d ( pars c-name fp-change1 sp-change1 -- fp-change sp-change )
     ." gforth_ll2d(" gen-wrapped-void
     ." ," gen-par-sp ." ," gen-par-sp ." )" ;
@@ -584,7 +588,7 @@ create gen-wrapped-types
 ' gen-wrapped-func ,
 ' gen-wrapped-void ,
 ' gen-wrapped-s ,
-' gen-wrapped-a ,
+' gen-wrapped-ws ,
 ' gen-wrapped-t ,
 ' gen-wrapped-void ,
 
@@ -1160,6 +1164,7 @@ latestnt Constant ft-vtable
 	2drop libcc-tmp-dir
     THEN
     libcc-named-dir$ $!
+    libcc-named-dir $1ff mkdir-parents drop
     clear-libs libcc>named-path
     s" libccdir" getenv 2dup d0= IF
 	2drop [ s" libccdir" getenv ':' 0 substc ] SLiteral
@@ -1171,23 +1176,23 @@ latestnt Constant ft-vtable
 init-libcc
 
 : rebind-libcc ( -- )
-    [: [: dup >does-code ['] call-c@ = IF
-		>body dup link-wrapper-function
-		\ ." relink: " over body> .name dup h. cr
-		over !
-	    ELSE  dup >does-code [ ' callback-does> >body ]L = IF
-		    dup >body setup-callback
-		THEN
-	    THEN  drop
+    [: [: ( lib -- )
+	    case dup >does-code
+		['] call-c@ of
+		    >body dup link-wrapper-function
+		    \ ." relink: " over body> .name dup h. cr
+		    swap !  endof
+		['] callback-does> of
+		    >body setup-callback
+		endof
+	    drop endcase
 	    true ;] swap traverse-wordlist ;] map-vocs ;
 : unbind-libcc ( -- )
-    [: [: dup >does-code ['] call-c@ = IF
-		dup >body off
-		\ ." relink: " over body> .name dup h. cr
-	    ELSE  dup >does-code [ ' callback-does> >body ]L = IF
-		    dup >body off
-		THEN
-	    THEN  drop
+    [: [: ( lib -- )
+	    case dup >does-code
+		['] call-c@        of  off  endof
+		['] callback-does> of  #0. rot 2 cells + 2!  endof
+		drop endcase
 	    true ;] swap traverse-wordlist ;] map-vocs ;
 
 set-current
@@ -1204,25 +1209,26 @@ Defer prefetch-lib ( addr u -- )
 : .libs ( -- ) [: lha-name $. space ;] map-libs ;
 
 : reopen-libs ( -- )
-    [:  lib-handle-addr !
+    [:  lib-handle-addr !@ >r
 	lib-modulename $@
-	libcc-named-dir 2dup  $1ff mkdir-parents drop
-	prepend-dirname lib-filename $!
+	libcc-named-dir prepend-dirname lib-filename $!
 	open-wrappers dup IF
 	    \ ." link " r@ lha-name $. ."  to " dup h. cr
-	    dup lib-handle!  init-lib  EXIT
+	    dup lib-handle!  init-lib
+	    r> lib-handle-addr !
+	    EXIT
 	THEN
+	r> lib-handle-addr !
 	.lib-error !!openlib!! throw
     ;] map-libs ;
 
-:noname ( -- )
+:is 'cold ( -- )
     defers 'cold  get-host? to host?
     init-libcc reopen-libs rebind-libcc lib-filename $free ;
-is 'cold
 
 :noname ( -- )
     defers 'image  unbind-libcc  ['] on map-libs
-    libcc$ off  libcc-named-dir$ off  libcc-path off ;
+    libcc$ off  libcc-named-dir$ off  libcc-path off  lib-filename off ;
 is 'image
 
 : c-library ( "name" -- ) \ gforth

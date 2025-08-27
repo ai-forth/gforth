@@ -1,7 +1,7 @@
 \ SEE.FS       highend SEE for ANSforth                16may93jaw
 
 \ Authors: Bernd Paysan, Anton Ertl, David Kühling, Jens Wilke, Neal Crook
-\ Copyright (C) 1995,2000,2003,2004,2006,2007,2008,2010,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,2000,2003,2004,2006,2007,2008,2010,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -119,19 +119,23 @@ Defer discode ( addr u -- ) \ gforth
 
 definitions
 
+: (next-head) ( addr1 addr2 -- addr )
+    tuck >r u+do
+	i xt? if
+	    i dup >cfa swap name>string drop cell negate and dup 0= select
+	    unloop rdrop exit
+	then
+    cell +loop
+    r> ;
+
 : next-head ( addr1 -- addr2 ) \ gforth-internal
     \G find the next header starting after addr1, up to here (unreliable).
     [ cell body> ] Literal +
     dup which-section? ?dup-IF
-	['] section-dp swap section-execute @
+	[: section-dp @ (next-head) ;] swap section-execute
     ELSE
-	here
-    THEN tuck >r u+do
-	i xt? if
-	    i name>string drop cell negate and unloop rdrop exit
-	then
-    cell +loop
-    r> ;
+	here (next-head)
+    THEN ;
 
 : next-prim ( addr1 -- addr2 ) \ gforth-internal
     \G find the next primitive after addr1 (unreliable)
@@ -139,7 +143,7 @@ definitions
     begin ( umin head R: boundary )
 	>link @ dup
     while
-	tuck name>interpret >code-address ( head1 umin ca R: boundary )
+	tuck ( name>interpret ) >code-address ( head1 umin ca R: boundary )
 	r@ - umin
 	swap
     repeat
@@ -201,13 +205,44 @@ VARIABLE C-Pass
 : Debug? ( -- flag ) C-Pass @ 2 = ;
 : ?.string  ( c-addr u xt -- )   Display? if .string else 2drop drop then ;
 
+Defer see-threaded
+
+\ The branchtable consists of three entrys:
+\ address of branch , branch destination , branch type
+
+CREATE BranchTable 128 cells allot
+here 3 cells -
+ACONSTANT MaxTable
+VARIABLE BranchPointer	\ point to the end of branch table
+VARIABLE SearchPointer
+VARIABLE C-Stop
+
+\ try see quotations, but so far fails, because can't reenter see-threaded
+
+: smart.quotation. ( n depth -- t / n f )
+    drop dup xt? IF
+	dup name>string d0= IF
+	    dup >code-address docol: = IF
+		s" [: " ['] Com-color .string
+		BranchPointer @ BranchTable
+		{ bp SaveTable[ 128 cells ] }
+		2 Level +! >body see-threaded  -2 Level +!
+		SaveTable[ BranchTable 128 cells move
+		bp BranchPointer !  C-Stop off
+		s" ] " ['] Com-color .string
+		true EXIT  THEN  THEN  THEN
+    false ;
+
 : c-lits ( -- )
     display? IF
 	sp@ >r  smart.s-skip off
-	litstack get-stack dup 0 ?DO  dup I - pick smart.s.  LOOP  drop
-	r> sp!
-    THEN
-    litstack $free ;
+	['] smart.quotation. smart<> >back
+	litstack get-stack  litstack $free
+	dup 0 ?DO  dup I - pick smart.s.  LOOP  drop
+	smart<> back> drop  r> sp!
+    ELSE
+	litstack $free
+    THEN ;
 
 Variable struct-pre
 : .struc ( c-addr u -- )       
@@ -231,18 +266,7 @@ Variable struct-pre
 
 \ FORMAT WORDS                                          13jun93jaw
 
-VARIABLE C-Stop
 VARIABLE Branches
-
-VARIABLE BranchPointer	\ point to the end of branch table
-VARIABLE SearchPointer
-
-\ The branchtable consists of three entrys:
-\ address of branch , branch destination , branch type
-
-CREATE BranchTable 128 cells allot
-here 3 cells -
-ACONSTANT MaxTable
 
 : FirstBranch ( -- )
     BranchTable cell+ SearchPointer ! ;
@@ -652,7 +676,7 @@ ACONSTANT MaxTable
 [IFDEF] u#exec
     Variable u#what \ global variable to specify what to search for
     : search-u#gen ( 0 offset1 offset2 nt -- xt/0 offset1 offset2 flag )
-	name>interpret dup >code-address docol: = IF
+	dup >code-address docol: = IF
 	    dup >body @decompile-prim u#what @ xt=
 	    over >body 3 cells + @decompile-prim ['] ;S xt= and
 	    IF  >r 2dup r@ >body cell+ 2@ d=
@@ -688,7 +712,7 @@ ACONSTANT MaxTable
 	IF  2dup >body @ = IF  -rot nip false  EXIT
 	    THEN  THEN  drop true ;
     : search-uservar ( offset nt -- offset flag )
-	name>interpret dup >code-address douser: = ?type-found ;
+	( name>interpret ) dup >code-address douser: = ?type-found ;
     : c-searcharg ( addr xt addr u -- addr' ) 2>r >r
 	display? IF
 	    0 over @
@@ -716,7 +740,7 @@ ACONSTANT MaxTable
 [THEN]
 [IFDEF] user@
     : search-userval ( offset nt -- offset flag )
-	name>interpret dup >does-code ['] infile-id >does-code = ?type-found ;
+	( name>interpret ) dup >does-code ['] infile-id >does-code = ?type-found ;
     : c-user@ ( addr -- addr' )
 	[: ['] search-userval swap traverse-wordlist ;]
 	s" user@ " c-searcharg ;
@@ -881,7 +905,7 @@ c-extender !
     else
 	." latestxt >body !"
     then ;
-: see-threaded ( addr -- )
+:is see-threaded ( addr -- )
     C-Pass @ DebugMode = IF
 	ScanMode c-pass !
 	EXIT

@@ -2,7 +2,7 @@
 \ Idea and implementation: Bernd Paysan (py)
 
 \ Authors: Bernd Paysan, Anton Ertl, Jens Wilke, David Kühling, Neal Crook
-\ Copyright (C) 1995,1996,1997,1998,1999,2000,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,1999,2000,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -892,7 +892,7 @@ Struct
   \ whereas >exec-compile contains the semantic of s"
   cell% field >comp
 
-  \ Compilation sematics (while parsing) of this ghost. E.g. 
+  \ Compilation semantics (while parsing) of this ghost. E.g. 
   \ "\" will skip the rest of line.
   \ These semantics are defined by Cond: and
   \ if a word is made immediate in instant, then the >exec2 field
@@ -1218,7 +1218,7 @@ Ghost lit@ drop
 Ghost lit-perform drop
 Ghost lit+ drop
 Ghost does-xt drop
-Ghost no-to drop
+Ghost n/a drop
 Ghost refill drop
 
 Ghost :docol    drop
@@ -2283,12 +2283,14 @@ s" ./doc/crossdoc.fd.tmp" r/w create-file throw value doc-file-id
 
 Variable to-doc  to-doc on
 
+require hold-number-line.fs
+
 : cross-doc-entry  ( -- )
     to-doc @ tlast @ 0<> and	\ not an anonymous (i.e. noname) header
     IF
-	s" " doc-file-id write-line throw
+        s" " doc-file-id write-line throw
+        sourceline# 0 <<# hold#line #> doc-file-id write-line throw #>>
 	s" make-doc " doc-file-id write-file throw
-
 	Last-Header-Ghost @ >ghostname doc-file-id write-file throw
 	>in @
 	'(' parse 2drop
@@ -3113,8 +3115,6 @@ drop
 ghost i/c>int
 ghost i/c>comp
 2drop
-ghost no-to
-drop
 ghost named>string
 ghost named>link
 2drop
@@ -3141,7 +3141,7 @@ ghost no.extensions
 Create hmtemplate
 0 ,
 findghost :, ,
-findghost no-to ,
+findghost n/a ,
 0 ,
 findghost noop ,
 findghost default-name>comp ,
@@ -3199,7 +3199,7 @@ End-Struct vtable-struct
     [G'] noname>link       hmtemplate g>hm>link ! ; is hm-noname
 : hm-populate ( -- )
     [G'] :,                hmtemplate g>hmcompile, !
-    [G'] no-to             hmtemplate g>hmto !
+    [G'] n/a               hmtemplate g>hmto !
     TNIL                   hmtemplate g>hmextra !
     hm-named ;
 
@@ -3250,12 +3250,14 @@ ghost ?fold1 drop
     [G'] :dodefer (doer,)
     swap T A, A, H [ T has? ec H ] [IF] alias-mask flag! [THEN]
     hm-populate
-    [G'] no-to   gset-to
+    [G'] n/a     gset-to
     [G'] a>int   gset->int
     [G'] i/c>comp hmtemplate g>hm>comp ! ;
 
 : opt: ( -- colon-sys )   gstart-xt set-optimizer ;
 : comp: ( -- colon-sys )  gstart-xt set-optimizer ;
+: fold1: ( -- colon-sys ) no-loop on gstart-xt set-optimizer
+    compile ?fold1 T ] H ;
 
 variable cross-boot$[]
 variable cross-boot[][]
@@ -3336,10 +3338,21 @@ Ghost to:exec
 
 Builder to-class:
 Build: T A, A, H ;Build
-by: :dodoes ;DO
+by: :dodoes1 ;DO
 hm: [G'] to:, gset-optimizer
     [G'] to:exec  gset-extra  ;hm
 \ hmghost: dodoes-hm
+
+Ghost to-access:,
+Ghost to-access:exec
+2drop
+
+Builder to-access:
+Build: T , H ;Build
+by: :dodoes2 ;DO
+compile: g>xt compile does-xt T a, H ;compile
+hm: [G'] to-access:, gset-optimizer
+    [G'] to-access:exec gset-extra  ;hm
 
 \ Variables and Constants                              05dec92py
 
@@ -3369,7 +3382,7 @@ by (AConstant)
 
 Builder 2Constant
 Build:  ( d -- ) T , , H ;Build
-by: :dodoes1 ( ghost -- d ) T dup cell+ @ swap @ H ;DO
+by: :dodoes3 ( ghost -- d ) T dup cell+ @ swap @ H ;DO
 hm: [G'] 2constant, gset-optimizer
     [G'] 2@ gset-extra ;hm
 
@@ -3380,7 +3393,7 @@ hm: [G'] variable, gset-optimizer ;hm \ hmghost: dovar-hm
 
 Builder <Builds
 BuildSmart: ;Build
-by: :dodoes2 ( target-body-addr -- addr ) ;DO
+by: :dodoes4 ( target-body-addr -- addr ) ;DO
 hm: [G'] does, gset-optimizer ;hm \ hmghost: dovar-hm
 
 Builder Variable
@@ -3644,7 +3657,7 @@ ghost do-translate drop
 Builder translate:
 Build: ( xtint xtcomp xtpost --- )
     T rot A, swap A, A, H 7 0 DO [T'] no.extensions X A, LOOP ;Build
-by: :dodoes3 ;DO
+by: :dodoes5 ;DO
 hm: [G'] does, gset-optimizer
 [G'] do-translate gset-extra  ;hm
 
@@ -4020,7 +4033,7 @@ Cond: postpone ( -- ) \ name
       dup >magic @ <imm> =
       IF   (gexecute)
       ELSE >link @ alit, compile compile,  THEN ;Cond
-	   
+
 \ save-cross                                           17mar93py
 
 hex
@@ -4530,7 +4543,7 @@ previous
 \ Sets the unique flag for a ghost. The assembler output
 \ generates labels with the ghostname concatenated with the address
 \ while cross-compiling. The address is concatenated
-\ because we have double occurences of the same name.
+\ because we have double occurrences of the same name.
 \ If we want to reference the labels from the assembler or C
 \ code we declare them unique, so the address is skipped.
   Ghost >ghost-flags dup @ <unique> or swap ! ;

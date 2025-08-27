@@ -1,7 +1,7 @@
 \ load a ~/.gforthrc on startup
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2014,2015,2016,2018,2019,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2015,2016,2018,2019,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -19,6 +19,7 @@
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
 Variable load-rc?
+Variable load-rc0? load-rc0? on
 
 get-current also options definitions
 : --no-rc ( -- )  load-rc? off ;
@@ -50,7 +51,8 @@ previous set-current
     \ the stack without moving that stack around.  By loading load-rc0
     \ and then failing, the rest of the process-option recognizer stack
     \ is tried as well.
-    [:  2drop load-rc0
-	cell negate action-of process-option @ +!
-	false ;] action-of process-option >stack  load-rc? on
+    load-rc0? @ IF  [: 2drop load-rc0
+	  cell negate action-of process-option @ +!
+	  false ;] action-of process-option >stack  THEN
+    load-rc? on
     defers 'image ; is 'image

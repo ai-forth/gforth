@@ -1,7 +1,7 @@
 #Makefile for Gforth
 
 #Authors: Bernd Paysan, Anton Ertl, Gerald Wodni
-#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -18,10 +18,15 @@
 #You should have received a copy of the GNU General Public License
 #along with this program. If not, see http://www.gnu.org/licenses/.
 
+ifndef VERBOSE
+.SILENT:
+endif
+
 srcdir = @srcdir@
 SRCINC = -I $(realpath @srcdir@)
-TEXI2DVI = @TEXI2DVI@ $(SRCINC)
-TEXI2PDF = @TEXI2DVI@ $(SRCINC) --pdf
+TEXI2DVI = @TEXI2DVI@ --expand $(SRCINC)
+TEXI2PDF = @TEXI2DVI@ --expand $(SRCINC) --pdf
+TEXINDEX = texindex
 DVI2PS	= dvips -t letterSize -Z
 #you can get texi2html from http://wwwcn.cern.ch/dci/texi2html/
 MAKEINFO = @MAKEINFO@ $(SRCINC)
@@ -38,12 +43,18 @@ GFORTH_TEXI =  gforth.texi version.texi fdl.texi gpl.texi
 
 VMGEN_TEXI = vmgen.texi version.texi fdl.texi
 
-gforth.dvi gforth.fns:	$(GFORTH_TEXI)
-		$(TEXI2DVI) gforth.texi || \
+clean:
+	-rm -rf *.aux *.cp *.cps *.dvi *.fn *.fns *.info* *.ky *.kys *.log \
+	          *.pdf *.ps gforth.texi *.toc *.txt numuses version.texi \
+		  gforth vmgen
+
+distclean: clean
+	-rm Makefile
+
+gforth.dvi:	$(GFORTH_TEXI)
 		$(TEXI2DVI) gforth.texi
 
 gforth.pdf:	$(GFORTH_TEXI)
-		$(TEXI2PDF) gforth.texi || \
 		$(TEXI2PDF) gforth.texi
 
 gforth-ebook.texi:	$(GFORTH_TEXI)
@@ -52,10 +63,10 @@ gforth-ebook.texi:	$(GFORTH_TEXI)
 gforth-ebook.pdf:	gforth-ebook.texi
 		$(TEXI2PDF) $<
 
-vmgen.dvi:	$(VMGEN_TEXI)
+vmgen.dvi: $(VMGEN_TEXI)
 		$(TEXI2DVI) $<
 
-vmgen.pdf:	$(VMGEN_TEXI)
+vmgen.pdf:	$(VMGEN_TEXI) vmgen.dvi
 		$(TEXI2PDF) $<
 
 gforth.ps:	gforth.dvi
@@ -87,6 +98,7 @@ gforth.txt:	$(GFORTH_TEXI)
 vmgen.txt:	$(VMGEN_TEXI)
 		-$(MAKEINFO) --no-headers --no-split $< >vmgen.txt
 
+.PHONY: pdf ebook dvi txt ps html info
 dvi:		gforth.dvi vmgen.dvi
 
 pdf:		gforth.pdf vmgen.pdf

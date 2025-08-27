@@ -1,7 +1,7 @@
 \ user friendly interface to generate to-actions
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2023 Free Software Foundation, Inc.
+\ Copyright (C) 2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -27,29 +27,29 @@
 
 : to-table: ( "name" "to-word" "+to-word" "addr-word" "action-of-word" "is-word" -- ) \ gforth-experimental to-table-colon
     \G Create a table @i{name} with entries for @code{TO}, @code{+TO},
-    \G @code{ADDR}, @code{ACTION-OF}, and @code{IS}.  The words for
+    \G @code{ACTION-OF}, @code{IS}, and @code{ADDR}.  The words for
     \G these entries are called with @i{xt} on the stack, where xt
     \G belongs to the word behind @code{to} (or @code{+to} etc.).  Use
-    \G @code{n/a} to mark unsupported operations.  Unsupported
-    \G operations can be left away at the end of the line.
+    \G @code{n/a} to mark unsupported operations.  Default entries
+    \G operations can be left away at the end of the line; the default
+    \G is for the @code{addr} entry is @code{[noop]} while the default
+    \G for the other entries is @code{n/a}.
     Create 0 BEGIN parse-name dup WHILE
 	    forth-recognize '-error , 1+
     REPEAT 2drop
     \ here goes the number of methods supported
-    to-table-size# swap U+DO ['] n/a , LOOP ;
-
-: >to+addr-table: ( table-addr "name" -- ) \ gforth-experimental to-to-plus-addr-table-colon
-    \G @i{Name} is a copy of the table at @i{table-addr}, but in
-    \G @i{name} the @code{ADDR}-method is supported
-    create here to-table-size# cells move
-    ['] [noop] here 2 cells + !  to-table-size# cells allot ;
+    to-table-size# swap U+DO
+        ['] n/a ['] [noop] I' I 1+ <> select ,
+    LOOP ;
 
 \ new interpret/compile:, we need it already here
 
-: interpret/compile: ( interp-xt comp-xt "name" -- ) \ gforth
+: interpret/compile: ( int-xt comp-xt "name" -- ) \ gforth interpret-slash-compile-colon
+    \G Defines @i{name}.@* @i{Name} execution: execute @i{int-xt}.@*
+    \G @i{Name} compilation: execute @i{comp-xt}.
     swap alias ,
     ['] i/c>comp set->comp
-    ['] no-to set-to ;
+    ['] n/a set-to ;
 
 \ Create TO variants by number
 
@@ -61,3 +61,6 @@
     :noname postpone record-name r> postpone Literal
     postpone (') postpone (to), postpone ;
     interpret/compile: ;
+
+: to-access: ( n "name" -- ) \ gforth-internal to-access-colon
+    ['] defer@ create-from , reveal ;

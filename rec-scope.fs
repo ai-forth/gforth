@@ -1,7 +1,7 @@
 \ scope recognizer
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2015,2016,2017,2018,2019,2020,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018,2019,2020,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -19,7 +19,7 @@
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
 : nosplit? ( addr1 u1 addr2 u2 --  addr1 u1 addr2 u2 flag ) \ gforth-experimental
-    \G Used on the result of @code{$split}, flag is true iff the
+    \G Used on the result of @code{$split}, flag is true if and only if the
     \G separator does not occur in the input string of @code{$split}.
     dup 0= IF  over >r 2over + r> =  ELSE  false  THEN ;
 
@@ -46,19 +46,21 @@
 action-of forth-recognize get-stack 1+ ' rec-scope -rot
 action-of forth-recognize set-stack
 
+: current-execute ( xt -- ) \ gforth-experimental
+    \G execute current-changing word and revert current afterwards
+    get-current >r catch r> set-current throw ;
+
 : in ( "voc" "defining-word" -- ) \ gforth-experimental
     \G execute @var{defining-word} with @var{voc} as one-shot current
     \G directory. Example: @code{in gui : init-gl ... ;} will define
     \G @code{init-gl} in the @code{gui} vocabulary.
-    get-current >r also ' execute definitions previous ' catch
-    r> set-current throw ;
+    [: ' also execute definitions previous ' execute ;] current-execute ;
 
 : in-wordlist ( wordlist "defining-word" -- ) \ gforth-experimental
     \G execute @var{defining-word} with @var{wordlist} as one-shot current
     \G directory. Example: @code{gui-wordlist in-wordlist : init-gl ... ;}
     \G will define @code{init-gl} in the @code{gui-wordlist} wordlist.
-    get-current >r set-current ' catch
-    r> set-current throw ;
+    [: set-current ' execute ;] current-execute ;
 
 : ?search-prefix ( addr len wid/0 -- addr' len' )
     ?dup-IF

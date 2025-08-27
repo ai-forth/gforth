@@ -1,7 +1,7 @@
 \ MINOS2 text style
 
 \ Author: Bernd Paysan
-\ Copyright (C) 2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -74,6 +74,8 @@ Defer }}text' ' }}text IS }}text'
     >o font-size# to border o o> ;
 : /center ( o -- o' )
     >r {{ glue*l }}glue r> glue*l }}glue }}h box[] >bl ;
+: /vcenter ( o -- o' )
+    >r {{ glue*l }}glue r> glue*l }}glue }}v box[] ;
 : /left ( o -- o' )
     >r {{ r> glue*l }}glue }}h box[] >bl ;
 : \\ }}text' /left ;

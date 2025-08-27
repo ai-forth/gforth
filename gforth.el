@@ -1,7 +1,7 @@
 ;;; gforth.el --- major mode for editing (G)Forth sources
 
 ;; Authors: Bernd Paysan, Anton Ertl, David Kühling
-;; Copyright (C) 1995,1996,1997,1998,2000,2001,2003,2004,2007,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+;; Copyright (C) 1995,1996,1997,1998,2000,2001,2003,2004,2007,2008,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 ;; This file is part of Gforth.
 
@@ -183,13 +183,17 @@ PARSED-TYPE specifies what kind of text is parsed. It should be
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
 	(("?:") definition-starter (font-lock-keyword-face . 1)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
+	((":is") definition-starter (font-lock-keyword-face . 1)
+	 "[ \t\n]" t name (font-lock-function-name-face . 3))
+	((":method") definition-starter (font-lock-keyword-face . 1)
+	 "[ \t\n]" t name (font-lock-function-name-face . 3))
 	(("to:") definition-starter (font-lock-keyword-face . 1)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
 	(("defer@:") definition-starter (font-lock-keyword-face . 1)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
 	(("event:") definition-starter (font-lock-keyword-face . 1)
 	 "[ \t\n]" t name (font-lock-function-name-face . 3))
-	(("immediate" "compile-only" "restrict")
+	(("immediate" "compile-only" "restrict" "addressable" "addressable:")
 	 immediate (font-lock-keyword-face . 1))
 	(("does>") definition-starter (font-lock-keyword-face . 1))
 	((":noname" "comp:" "compsem:" "opt:" "fold1:") definition-starter (font-lock-keyword-face . 1))
@@ -267,7 +271,8 @@ PARSED-TYPE specifies what kind of text is parsed. It should be
 	 "[ \t\n]" t name (font-lock-variable-name-face . 3))
 
 	(("create" "variable" "constant" "2variable" "2constant" "fvariable"
-	  "$variable" "$[]variable" "fconstant" "value" "2value" "fvalue"
+	  "$variable" "$[]variable" "fconstant" "value" "2value"
+	  "fvalue" "varue" "2varue" "fvarue"
 	  "field" "user" "vocabulary" "cs-vocabulary" "create-interpret/compile"
 	  "interpret/compile:" "debug:" "field:" "2field:" "ffield:"
 	  "sffield:" "dffield:" "uvar" "uvalue" "cfield:" "wfield:" "lfield:"
@@ -322,9 +327,9 @@ PARSED-TYPE specifies what kind of text is parsed. It should be
 	 immediate (font-lock-constant-face . 3))
 	("\\([&#]-?[0-9a-f.]+\\|\\(0x-?\\|\\$-?\\)[0-9a-f.]+\\|%-?[01]+\\)"
 	 immediate (font-lock-constant-face . 3))
-	("\"[^\"]**" immediate (font-lock-string-face . 1)
-	 "[\"\n]" nil string (font-lock-string-face . 1))
-	("\".*\""
+	("\"[[:cntrl:][:nonascii:][:multibyte:]!#-~ ]*?" immediate (font-lock-string-face . 1)
+	 "[^\\]\"" nil string (font-lock-string-face . 1))
+	("\"[[:cntrl:][:nonascii:][:multibyte:]!#-~ ]*?\""
 	 immediate (font-lock-string-face . 3))
 	("[a-z\-0-9]+(" immediate (font-lock-comment-face . 1)
 	 "[)]" nil comment (font-lock-comment-face . 1))
@@ -435,7 +440,7 @@ INDENT1 and INDENT2 are indentation specifications of the form
 	  "[if]" "[ifdef]" "[ifundef]" "[begin]" "[for]" "[do]" "[?do]" "[:"
 	  "[n:l" "[n:h" "[n:d" "[d:l" "[d:h" "[d:d" "[f:l" "[f:h" "[f:d" "[{:")
 	 (0 . 2) (0 . 2))
-	((":" "?:" ":noname" "code" "abi-code" "struct" "m:" ":m" "class" "uclass" "with" 
+	((":" ":is" ":method" "?:" ":noname" "code" "abi-code" "struct" "m:" ":m" "class" "uclass" "with" 
 	  "interface" "c-library" "c-library-name" "comp:" "opt:" "post:"
 	  "begin-structure" "extend-structure" "event:" "fold1:" "to:" "defer@:" ":trigger-on(")
 	 (0 . 2) (0 . 2) non-immediate)
@@ -756,7 +761,7 @@ End:\" construct).")
 ;;;
 (defvar forth-defining-words 
   '("VARIABLE" "CONSTANT" "2VARIABLE" "2CONSTANT" "FVARIABLE" "FCONSTANT"
-   "USER" "VALUE" "2Value" "field" "end-struct" "VOCABULARY" "CREATE" ":" "?:" "CODE"
+   "USER" "VALUE" "2Value" "field" "end-struct" "VOCABULARY" "CREATE" ":" "?:" ":is" ":method" "CODE"
    "DEFER" "ALIAS" "interpret/compile:" "debug:" "field:" "2field:" "ffield:"
    "sffield:" "dffield:" "uvar" "uvalue" "voctable" "method" "umethod")
   "List of words, that define the following word.

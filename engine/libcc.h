@@ -1,7 +1,7 @@
 /* header file for libcc-generated C code
 
   Authors: Anton Ertl, Bernd Paysan
-  Copyright (C) 2006,2007,2008,2012,2013,2014,2015,2016,2017,2019,2020,2023 Free Software Foundation, Inc.
+  Copyright (C) 2006,2007,2008,2012,2013,2014,2015,2016,2017,2019,2020,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -26,10 +26,13 @@ extern "C" {
 #include "config.h"
 #include <stddef.h>
 #include <signal.h>
-#include <alloca.h>
 #include <setjmp.h>
 #include <string.h>
 #include <stdlib.h>
+#if defined (HAVE_ALLOCA_H)
+# include <alloca.h>
+#endif
+#include <wchar.h>
 
 #if defined(_WIN32) || defined(__WIN32__) || defined(__CYGWIN__) || defined(__ANDROID__)
 #undef HAS_BACKLINK
@@ -40,10 +43,34 @@ typedef unsigned CELL_TYPE UCell;
 typedef unsigned char Char;
 typedef double Float;
 typedef Char *Address;
-typedef void **Xt;
+typedef void *Label;
+typedef Label *Xt;
 
 #define Clongest long long
 typedef unsigned Clongest UClongest;
+
+typedef struct {
+  Address base;		/* base address of image (0 if relocatable) */
+  UCell dict_size;
+  Address image_dp;	/* all sizes in bytes */
+  Address sect_name;
+  Address sect_locs;
+  Address sect_primbits;
+  Address sect_targets;
+  Address sect_codestart;
+  Address sect_last_header;
+  UCell data_stack_size;
+  UCell fp_stack_size;
+  UCell return_stack_size;
+  UCell locals_stack_size;
+  Xt *boot_entry;	/* initial ip for booting (in BOOT) */
+  Xt *quit_entry;
+  Xt *execute_entry;
+  Xt *find_entry;
+  Label *xt_base;         /* base of DOUBLE_INDIRECT xts[], for comp-i.fs */
+  Label *label_base;      /* base of DOUBLE_INDIRECT labels[], for comp-i.fs */
+} ImageHeader;
+/* the image-header is created in main.fs */
 
 typedef struct {
   Cell next_task;
@@ -54,6 +81,7 @@ typedef struct {
   Float* fp0;
   Address lp0;
   Xt *throw_entry;
+  ImageHeader *current_section;
 } user_area;
 
 typedef struct {
@@ -183,8 +211,8 @@ gforth_stackpointers gforth_libcc_init(GFORTH_ARGS)
             : 0); \
   } while (0);
 
-static int gforth_strs_i;
-static void * gforth_strs[0x10] = { 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0 };
+static __thread int gforth_strs_i;
+static __thread void* gforth_strs[0x10];
 
 #define ROLLSTR(type,size)					   \
   type * str= malloc(sizeof(type)*(size));			   \
@@ -242,6 +270,58 @@ static __attribute__((unused)) wchar_t * gforth_str2wc(Char* addr, UCell u)
     str[i]=0; // add zero terminator
     return str;
   }
+}
+
+static __attribute__((unused)) void wc_str2gforth_str(wchar_t* wstring, Char ** addr, UCell* u)
+{
+  wchar_t wc;
+  wchar_t *wstring_count=wstring;
+  Char *strend;
+  UCell surrogate=0;
+  if(wstring == NULL) {
+    *u=0;
+    *addr=0;
+    return;
+  }
+  ROLLSTR(Char,(wcslen(wstring)*4));
+  strend=str;
+  for(;;) {
+    switch((wc=*wstring_count++)) {
+    case 0x0000: break;
+    case 0x0001 ... 0x007F:
+      *strend++=(Char)wc; continue;
+    case 0x0080 ... 0x07FF:
+      *strend++=0xC0 | (Char)(wc >> 6);
+      *strend++=0x80 | (Char)(wc & 0x3F);
+      continue;
+    case 0x0800 ... 0xD7FF:
+    case 0xE000 ... 0xFFFF:
+      *strend++=0xE0 | (Char)(wc >> 12);
+      *strend++=0x80 | (Char)((wc >> 6) & 0x3F);
+      *strend++=0x80 | (Char)(wc & 0x3F);
+      continue;
+    case 0xD800 ... 0xDBFF:
+      surrogate = (wc & 0x3FF) << 10;
+      continue;
+    case 0xDC00 ... 0xDFFF:
+      wc = (surrogate | (wc & 0x3FF)) + 0x10000;
+      surrogate = 0; // surrogate pair=4 bytes, fall through
+    case 0x10000 ... 0x10FFFF:
+      *strend++=0xF0 | (Char)((wc >> 18) & 0x7);
+      *strend++=0x80 | (Char)((wc >> 12) & 0x3F);
+      *strend++=0x80 | (Char)((wc >> 6) & 0x3F);
+      *strend++=0x80 | (Char)(wc & 0x3F);
+      continue;
+    default: // undefined code point 0xFFFD
+      *strend++=0xEF;
+      *strend++=0xBF;
+      *strend++=0xBD;
+      continue;
+    }
+    break;
+  }
+  *u=(UCell)(strend-str);
+  *addr=str;
 }
 
 typedef Char hash_128[16];

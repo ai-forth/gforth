@@ -1,7 +1,7 @@
 \ Sections for the dictionary (like sections in assembly language)
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2016,2018,2019,2020,2021 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2018,2019,2020,2021,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -26,8 +26,8 @@
 \ Deal with MARKERs and the native code thingies
 
 $Variable sections   \ section stack (grows in both directions)
-user #extra-sections \ hidden extra sections not part of the next/prev
-		     \ section stack
+Variable #extra-sections \ hidden extra sections not part of the next/prev
+		         \ section stack
 
 256 1024 * value section-defaultsize
 : image-offset ( -- n )
@@ -64,29 +64,33 @@ is addr>view
     sections-execute nip ;
 :noname which-section? 0<> ; is in-dictionary?
 
+: pagealigned ( size -- size' )
+    pagesize naligned ;
+
+: alloc-mmap-guard ( size -- addr ) \ gforth-experimental
+    \G allocate a memory region with mmap including a guard page
+    \G at the end.
+    pagealigned dup pagesize + alloc-mmap throw
+    tuck + guardpage ;
+
 : create-section ( size -- section )
     current-section @ >r
-    image-offset >r
-    dup r@ + allocate throw r> + dup current-section !
+    image-offset >r dup r@ + alloc-mmap-guard
+    r> + dup current-section !
+    section-start section-desc erase
     dup section-start !
     dup codestart !
     section-desc + section-dp !
     section-size !
     ['] noname section-name !
     locs[] dup off $saved
-    primbits off  targets off
-    [IFDEF] last-header  last-header off  [THEN]
     current-section @ r> current-section ! ;
 
 : new-section ( -- )
     section-size @ 2/ 2/ create-section sections >stack ;
 
-Variable lits<>
-
-:noname defers 'image  lits<> off ; is 'image
-
 :noname ( -- )
-    forthstart current-section ! set-section  lits<> off ;
+    forthstart current-section ! set-section ;
 is reset-dpp
 
 : section# ( -- n )
@@ -108,11 +112,17 @@ is reset-dpp
 : >extra-sections ( section -- )
     sections >back 1 #extra-sections +! ;
 
-: extra-section ( size "name" -- )
+: extra-section ( usize "name" -- ) \ gforth
+    \G Define a new word @i{name} and create a section @i{s} with at
+    \G least @i{usize} unused bytes.@* @i{Name} execution @code{(
+    \G ... xt -- ... )}: When calling @i{name}, the current section is
+    \G @i{c}.  Switch the current section to be @i{s}, @i{execute} xt,
+    \G then switch the current section back to @i{c}.
+    section-desc + pagealigned
     create-section dup >extra-sections
-    [: create , latest section-name !
-      does> ( xt -- ) @ section-execute ;]
-    over section-execute ;
+    create , latest [: section-name ! ;] over @ section-execute
+  does> ( xt -- )
+    @ section-execute ;
     
 \ initialization
 
@@ -142,7 +152,6 @@ forthstart sections >stack
 :noname ( -- )
     \ switch to the next section, creating it if necessary
     section# dup #extra-sections @ < extra-section-error and throw
-    litstack @ lits<> >stack  litstack off
     1+ dup sections stack# = IF  new-section  THEN
     #>section ; is next-section
 
@@ -152,7 +161,6 @@ forthstart sections >stack
     dup #extra-sections @ < extra-section-error and throw
     dup #extra-sections @ = first-section-error and throw
     1- #>section
-    litstack $free lits<> stack> litstack !
 ; is previous-section
 
 [defined] test-it [if] 

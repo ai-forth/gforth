@@ -26,6 +26,15 @@ c-library serial
     \c #include <stdio.h>
     \c #include <unistd.h>
     \c #include <fcntl.h>
+    \c #ifdef __sun
+    \c static inline void cfmakeraw(struct termios *tio) {
+    \c   tio->c_iflag &= ~(IMAXBEL|IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON);
+    \c   tio->c_oflag &= ~OPOST;
+    \c   tio->c_lflag &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
+    \c   tio->c_cflag &= ~(CSIZE|PARENB);
+    \c   tio->c_cflag |= CS8;
+    \c   }
+    \c #endif
 
     c-function tcgetattr tcgetattr n a -- n ( fd termios -- r )
     c-function tcsetattr tcsetattr n n a -- n ( fd opt termios -- r )
@@ -33,7 +42,6 @@ c-library serial
     c-function cfsetispeed cfsetispeed a n -- n ( termios speed -- r )
     c-function cfsetospeed cfsetospeed a n -- n ( termios speed -- r )
     c-function tcflow tcflow n n -- n ( fd action -- n )
-    c-function setvbuf setvbuf a a n n -- n ( file* buf mode size -- r )
 end-c-library
 
 require ./libc.fs
@@ -111,11 +119,12 @@ base !
 
 $5409 Constant TCSBRK
 $540B Constant TCFLSH
-$541B Constant FIONREAD
+[IFUNDEF] FIONREAD
+    $541B Constant FIONREAD
+[THEN]
     2 Constant _IONBF
 
 : set-baud ( baud port -- )
-    dup 0 _IONBF 0 setvbuf ?ior \ no buffering on serial IO
     fileno dup
     >r t_old tcgetattr ?ior
     t_old t_buf termios move

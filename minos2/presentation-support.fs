@@ -1,7 +1,7 @@
 \ Presentation support
 
 \ Author: Bernd Paysan
-\ Copyright (C) 2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -60,10 +60,10 @@ glue new glue-right !
     hglue-c df@ f* hglue-c df!
     o> ;
 
-:noname defers re-config
+:is re-config defers re-config
     imgs[] $@ bounds U+DO
 	I @ >o image-w image-h wh>tile-glue o>
-    cell +LOOP ; is re-config
+    cell +LOOP ;
 
 : album-image ( addr u n -- )
     imgs[] $[] @ >o image-tex
@@ -161,27 +161,33 @@ end-class slide-actor
 
 0 Value scroll<<
 
-:noname ( axis dir rx ry -- )
+also [IFDEF] android android [THEN]
+
+slide-actor :method scrolled ( axis dir rx ry -- )
     scroll<< 4 = IF
 	[ box-actor ] defers scrolled
     ELSE
 	nip fdrop fdrop
 	0> IF  prev-slide  ELSE  next-slide  THEN
-    THEN ; slide-actor is scrolled
-:noname ( rx ry b n -- ) dup 1 and 0= IF
+    THEN ;
+slide-actor :method clicked ( rx ry b n -- ) dup 1 and 0= IF
 	over $180 and IF  4 to scroll<<  THEN
 	over $08 scroll<< lshift and IF  prev-slide  2drop fdrop fdrop  EXIT  THEN
 	over $10 scroll<< lshift and IF  next-slide  2drop fdrop fdrop  EXIT  THEN
 	over -$2 and 0= IF
-	    fover caller-w >o x f- w f/ o>
-	    fdup 0.1e f< IF  fdrop  2drop fdrop fdrop  prev-slide  EXIT
-	    ELSE  0.9e f> IF  2drop fdrop fdrop  next-slide  EXIT  THEN  THEN
+	    fover fover caller-w >o y fswap f- h f/ fdup 0.2e f> 0.8e f< and
+	    IF  x f- w f/  ELSE  fdrop 0.5e  THEN o>
+            fdup 0.1e f< IF  fdrop  2drop fdrop fdrop  prev-slide  EXIT
+            ELSE  0.9e f> IF  2drop fdrop fdrop  next-slide  EXIT  THEN  THEN
 	THEN  THEN
-    [ box-actor ] defers clicked +sync +resize ; slide-actor is clicked
+    [ box-actor ] defers clicked +sync +resize ;
+
+previous
+
 forward >fullscreen
 forward >normalscreen
 forward screenshot>png
-:noname ( ekey -- )
+slide-actor :method ekeyed ( ekey -- )
     case
 	k-up      of  prev-slide  endof
 	k-down    of  next-slide  endof
@@ -213,12 +219,12 @@ forward screenshot>png
 	k-f9 of  slide# @ [: ." presentation-" 0 .r ." .png" ;] $tmp
 	    screenshot>png  endof
 	[ box-actor ] defers ekeyed  EXIT
-    endcase +sync +resize ; slide-actor is ekeyed
-:noname ( $xy b -- ) 2dup [ box-actor ] defers touchmove drop
+    endcase +sync +resize ;
+slide-actor :method touchmove ( $xy b -- ) 2dup [ box-actor ] defers touchmove drop
     xy@ dpy-h @ s>f fswap f- dpy-h @ 2/ fm/ lightpos-xyz sfloat+ sf!
     dpy-w @ s>f f- dpy-w @ 2/ fm/ lightpos-xyz sf!
     3.0e lightpos-xyz 2 sfloats + sf!
-    LightPos 1 lightpos-xyz opengl:glUniform3fv  +sync ; slide-actor is touchmove
+    LightPos 1 lightpos-xyz opengl:glUniform3fv  +sync ;
 : slide[] ( o -- o )
     >o slide-actor new to act o act >o to caller-w o> o o> ;
 
@@ -285,11 +291,8 @@ synonym rgbas sfloats
     vp-tops get-stack 0 ?DO  .vp-top  LOOP
     1e ambient% sf! set-uniforms ;
 
-: !init-animation ( -- )
-    0.1e o [: fdrop drop color-theme s>f 1/2 f+ ColorMode! +sync +vpsync ;]
-    >animate ;
 : presentation ( -- )
-    1config >fullscreen !pres-widgets !init-animation widgets-loop
+    1config >fullscreen !pres-widgets widgets-loop
     >normalscreen ;
 [IFDEF] looper-keyior
     : >presentation-key ( -- )  1 level# +!

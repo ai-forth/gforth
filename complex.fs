@@ -1,7 +1,7 @@
 \ complex numbers
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2005,2007,2015,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2005,2007,2015,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -45,10 +45,8 @@
 \ locals                                               10jan15py
 
 to-table: z!-table z! z+!
-z!-table >to+addr-table: z!a-table
 
 z!-table locals-to-class: to-z:
-z!a-table locals-to-class: to-za:
 
 : compile-pushlocal-z ( a-addr -- ) ( run-time: z -- )
     locals-size @ alignlp-f float+ float+ dup locals-size !
@@ -58,16 +56,14 @@ z!a-table locals-to-class: to-za:
     dup ]] literal f@localn [[ float+ ]] literal f@localn [[ ;
 
 also locals-types definitions
-: z: ( compilation "name" -- a-addr xt; run-time z -- ) \ gforth w-colon
+: z: ( compilation "name" -- a-addr xt; run-time z -- ) \ gforth z-colon
     \G Define value-flavoured complex local @i{name} @code{( -- z1 )}
     [: @ lp-offset compile-z@local ;]
     ['] to-z: create-local
     ['] compile-pushlocal-z ;
 : za: ( compilation "name" -- a-addr xt; run-time z -- ) \ gforth z-a-colon
     \G Define varue-flavoured complex local @i{name} @code{( -- z1 )}
-    [: @ lp-offset compile-z@local ;]
-    ['] to-za: create-local
-    ['] compile-pushlocal-z ;
+    addressable: z: ;
 : z^ ( "name" -- a-addr xt )
     w^ drop  ['] compile-pushlocal-z ;
 previous definitions
@@ -75,7 +71,6 @@ previous definitions
 also locals-types
 
 z: some-zlocal 2drop
-za: some-zalocal 2drop
 
 previous
 
@@ -90,9 +85,8 @@ previous
     [: lit, postpone z@ ;] set-optimizer
     ['] z-to set-to ;
 
-' >body z!a-table to-class: za-to
-: ZVarue ( complex -- )
-    ZValue ['] za-to set-to ;
+: ZVarue ( complex -- ) \ gforth-obsolete
+    ZValue addressable ;
 
 \ simple operations                                    02mar05py
 : z+       ( z1 z2 -- z1+z2 ) frot f+ f>l f+ fl> ;
@@ -101,8 +95,12 @@ previous
 : x+       ( z r -- z+r ) frot f+ fswap ;
 : x-       ( z r -- z-r ) fnegate x+ ;
 : z*       ( z1 z2 -- z1*z2 )
-           fdup 4 fpick f* f>l fover 3 fpick f* f>l
-           f>l fswap fl> f* f>l f* fl> f- fl> fl> f+ ;
+    { f: r1 f: i1 f: r2 f: i2 -- }
+    r1 r2 f* i1 i2 f* f-
+    r1 i2 f* r2 i1 f* f+ ;
+\ code using locals not only is easier to read, but also slightly faster
+\           fdup 4 fpick f* f>l fover 3 fpick f* f>l
+\           f>l fswap fl> f* f>l f* fl> f- fl> fl> f+ ;
 : zscale   ( z r -- z*r ) ftuck f* f>l f* fl> ;
 
 \ simple operations                                    02mar05py
@@ -115,7 +113,8 @@ previous
 : 1/z      ( z -- 1/z ) zconj zdup zsqabs 1/f zscale ;
 : z/       ( z1 z2 -- z1/z2 ) 1/z z* ;
 : pyth ( a b c -- r ) f/ fdup f* 1e f+ fsqrt  f* ;
-: |z| ( z -- r )	\ compute sqrt(a^2+b^2) without overflow
+: |z| ( z -- r )
+    \ compute sqrt(a^2+b^2) without overflow
     fabs fswap fabs
     fover fover f> IF
 	fover ( f: a b a -- ) pyth  exit
@@ -204,8 +203,8 @@ Defer fc.       :noname f. 1 backspaces ; IS fc.
 \ recognizer
 
 : zliteral ( z -- ) fswap ]] fliteral fliteral [[ ; immediate
-' noop ' zliteral ' zliteral >postponer
-translate: translate-complex
+' noop ' zliteral dup >postponer
+translate: translate-complex ( rr ri -- ... ) \ gforth-experimental
 \ alternative:
 \ : translate-complex ( z -- ) fswap translate-float translate-float ;
 

@@ -1,7 +1,7 @@
 \ Sections (part 2) for the dictionary (like sections in assembly language)
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2016,2018,2019,2020,2021 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2018,2019,2020,2021,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,11 +18,18 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-: .sections ( -- )
-    cr ."             start      size       +dp name"
+: reverse-sections-execute ( xt -- )
+    >r sections $@ cell mem-do
+        j i @ section-execute
+    loop
+    rdrop ;
+
+: .sections ( -- ) \ gforth dot-sections
+    \G Show all the sections and their status.
+    cr ."             start      size      used name"
     current-section @
     [:  cr dup current-section @ = if '>' else bl then emit
 	section-start @ #16 hex.r
-	section-size  @ #10 hex.r
-	section-dp    @ section-start @ - #10 hex.r space
-	section-name @ id. ;] sections-execute  drop ;
+	section-size  @ #10 dec.r
+	section-dp    @ section-start @ - #10 dec.r space
+	section-name @ id. ;] reverse-sections-execute  drop ;

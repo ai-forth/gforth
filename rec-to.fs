@@ -1,7 +1,7 @@
 \ -> (to/is replacement) recognizer
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,28 +18,28 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
-: post-to, ( nt -- )  swap lit, lit, ;
+' (to) ' (to), ' 2lit, >postponer
+translate: translate-to ( n xt -- ... ) \ gforth-experimental
+\G @i{xt} belongs to a value-flavoured word, @i{n} is the index into
+\G the @word{to-table:} for @i{xt} (@pxref{Words with user-defined TO
+\G etc.}).
 
-' (to) ' (to), ' post-to, >postponer translate: translate-to
 
-: rec-to ( addr u -- xt n translate-to | 0 ) \ gforth-experimental
+Create to-slots here $100 dup allot $FF fill
+0 "-+@='" bounds [DO] dup to-slots [I] c@ + c! 1+ [LOOP] drop
+
+: rec-to ( addr u -- n xt translate-to | 0 ) \ gforth-experimental
     \G words prefixed with @code{->} are treated as if preceeded by
     \G @code{TO}, with @code{+>} as @code{+TO}, with
     \G @code{'>} as @code{ADDR}, with @code{@@>} as @code{ACTION-OF}, and
     \G with @code{=>} as @code{IS}.
     dup 3 u< IF  2drop 0  EXIT  THEN
     over 1+ c@ '>' <> IF  2drop 0  EXIT  THEN
-    case  over c@
-	'-' of  0  endof
-	'+' of  1  endof
-	''' of  2  endof
-	'@' of  3  endof
-	'=' of  4  endof
-	drop 2drop 0  EXIT
-    endcase  -rot
-    2 /string forth-recognize
-    translate-nt? 0= IF  drop 0 EXIT  THEN
-    dup >namehm @ >hmto @ ['] no-to = IF  2drop 0 EXIT  THEN
+    over c@ to-slots + c@ dup $FF = IF  drop 2drop 0  EXIT  THEN
+    -rot  2 /string sp@ 3 cells + fp@ 2>r forth-recognize
+    translate-nt? 0= IF  2r> fp! sp! 0 EXIT  THEN  2rdrop
+    \ dup >namehm @ >hmto @ ['] n/a = IF  2drop 0 EXIT  THEN
+    over 4 = IF  ?addr  THEN
     name>interpret ['] translate-to ;
 
 ' rec-to action-of forth-recognize >back

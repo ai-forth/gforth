@@ -1,7 +1,7 @@
 \ Linux bindings for GLES
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2014,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -180,7 +180,7 @@ Defer rescaler        ' noop is rescaler
 : getwh ( -- )
     0 0 dpy-w @ dpy-h @ glViewport ;
 
-:noname ( -- ) +sync +config ( getwh ) ; is config-changed
+:is config-changed ( -- ) +sync +config ( getwh ) ;
 
 : term-cr defers cr ;
 
@@ -241,9 +241,7 @@ Variable ?sync-update
 	dpy wm_sync_counter l@ wm_sync_value' XSyncSetCounter drop
     THEN ;
 
-[IFUNDEF] level#
-    Variable level#
-[THEN]
+[IFUNDEF] level#  Variable level#  [THEN]
 
 \ handle X11 events
 
@@ -278,7 +276,7 @@ object class
     drop 0 XSelectionEvent-requestor value: e.requestor'
     drop 0 XSelectionEvent-property  value: e.property'
     drop 0 XSelectionEvent-target    value: e.target'
-    drop 0 XClientMessageEvent-data  value: e.data
+    drop 0 XClientMessageEvent-data  addressable: value: e.data
     drop 0 XEvent var event
     XEvent var xev \ for sending events
     $100 var look_chars
@@ -439,38 +437,37 @@ previous previous
 
 ' noop handler-class is DoNull \ doesn't exist
 ' noop handler-class is DoOne  \ doesn't exit, either
-:noname  ic event look_chars $FF look_key comp_stat  Xutf8LookupString
+handler-class :method DoKeyPress  ic event look_chars $FF look_key comp_stat  Xutf8LookupString
     dup 1 = IF  look_chars c@ dup $7F = swap 8 = or +  THEN \ we want the other delete
     ?dup-IF  look_chars swap
     ELSE   look_key l@ x-key>ekey  THEN
-    2dup "\e" str= level# @ 0> and IF  2drop -1 level# +!  ELSE  inskeys  THEN
-; handler-class is DoKeyPress
+    2dup "\e" str= level# @ 0> and IF  2drop -1 level# +!  ELSE  inskeys  THEN ;
+
 ' noop handler-class is DoKeyRelease
-:noname  0 *input action ! 1 *input pressure !
+handler-class :method DoButtonPress  0 *input action ! 1 *input pressure !
     *input eventtime 2@ *input eventtime' 2!
     e.kbm.time s>d *input eventtime 2!  #0. *input downtime 2!
     e.kbm.time XTime0 - to timeoffset
-    e.x e.y *input y0 ! *input x0 ! ; handler-class is DoButtonPress
-:noname  1 *input action ! 0 *input pressure !
+    e.x e.y *input y0 ! *input x0 ! ;
+handler-class :method DoButtonRelease  1 *input action ! 0 *input pressure !
     *input eventtime 2@ *input eventtime' 2!
     e.kbm.time s>d 2dup *input eventtime 2@ d- *input downtime 2!
     e.kbm.time XTime0 - to timeoffset
     *input eventtime 2!
-    e.x *input x0 ! e.y *input y0 ! ; handler-class is DoButtonRelease
-:noname
-    *input pressure @ IF
+    e.x *input x0 ! e.y *input y0 ! ;
+handler-class :method DoMotionNotify     *input pressure @ IF
 	2 *input action !
 	e.kbm.time s>d *input eventtime 2@ d- *input downtime 2!
 	e.kbm.time XTime0 - to timeoffset
 	e.x e.y *input y0 ! *input x0 !
-    THEN ; handler-class is DoMotionNotify
+    THEN ;
 ' noop handler-class is DoEnterNotify
 ' noop handler-class is DoLeaveNotify
-:noname e.window focus-ic ; handler-class is DoFocusIn
+handler-class :method DoFocusIn e.window focus-ic ;
 ' noop handler-class is DoFocusOut
 ' noop handler-class is DoKeymapNotify
-:noname exposed on ; handler-class is DoExpose
-:noname exposed on ; handler-class is DoGraphicsExpose
+handler-class :method DoExpose exposed on ;
+handler-class :method DoGraphicsExpose exposed on ;
 ' noop handler-class is DoNoExpose
 ' noop handler-class is DoVisibilityNotify
 ' noop handler-class is DoCreateNotify
@@ -479,19 +476,19 @@ previous previous
 ' noop handler-class is DoMapNotify
 ' noop handler-class is DoMapRequest
 ' noop handler-class is DoReparentNotify
-:noname  e.c-height e.c-width dpy-w ! dpy-h !
+handler-class :method DoConfigureNotify  e.c-height e.c-width dpy-w ! dpy-h !
     ctx IF  config-changed  ELSE  getwh  THEN
-; handler-class is DoConfigureNotify
+;
 ' noop handler-class is DoConfigureRequest
 ' noop handler-class is DoGravityNotify
-:noname  e.r-width dpy-w ! e.r-height dpy-h ! config-changed ; handler-class is DoResizeRequest
+handler-class :method DoResizeRequest  e.r-width dpy-w ! e.r-height dpy-h ! config-changed ;
 ' noop handler-class is DoCirculateNotify
 ' noop handler-class is DoCirculateRequest
-:noname e.psc.time XTime0 - to timeoffset
+handler-class :method DoPropertyNotify e.psc.time XTime0 - to timeoffset
     ( ." Property changed: " dpy e.psc.atom XGetAtomName cstring>sstring type cr )
-; handler-class is DoPropertyNotify
-:noname  e.psc.time XTime0 - to timeoffset
-    own-selection off ; handler-class is DoSelectionClear
+;
+handler-class :method DoSelectionClear  e.psc.time XTime0 - to timeoffset
+    own-selection off ;
 
 : rest-request { addr n mode format type -- }
     dpy e.requestor e.property
@@ -536,7 +533,7 @@ previous previous
     e.target do-request
     dpy e.requestor 0 0 xev XSendEvent drop ;
 ' selection-request handler-class is DoSelectionRequest
-:noname ( -- )
+handler-class :method DoSelectionNotify ( -- )
     e.s.time XTime0 - to timeoffset
     e.requestor' e.property'
     \ dup .atom  e.target' .atom
@@ -545,9 +542,9 @@ previous previous
 	XA_CLIPBOARD  of  paste$    endof
 	drop 2drop  got-selection on ( we got nothing ) EXIT
     endcase  e.target' swap fetch-property
-; handler-class is DoSelectionNotify
+;
 ' noop handler-class is DoColormapNotify
-:noname ( -- )  e.data
+handler-class :method DoClientMessage ( -- )  e.data
     case
 	wm_delete_window l@ of  -1 level# +!  endof
 	wm_ping          l@ of  root-win  to e.window
@@ -560,7 +557,7 @@ previous previous
 	    wm_sync_value xsv!
 	endof
     endcase
-; handler-class is DoClientMessage
+;
 ' noop handler-class is DoMappingNotify
 ' noop handler-class is DoGenericEvent
 ' noop handler-class is ?looper-timeouts
@@ -763,11 +760,10 @@ XVisualInfo buffer: visual-info
     up@ [ up@ ]L = IF screen-ops THEN  defers deadline ;
 ' x-deadline IS deadline
 
-0 warnings !@
-: bye ( -- )
+:is bye ( -- )
     ic ?dup-IF  XDestroyIC  THEN  0 to ic
     xim ?dup-IF  XCloseIM drop  THEN  0 to xim
-    bye ;
-warnings !
+    defers bye ;
+
 ' x-key IS key-ior
 ' x-key? IS key?

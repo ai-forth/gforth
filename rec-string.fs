@@ -1,7 +1,7 @@
 \ Quoted string recognizer
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -26,14 +26,36 @@ s" Scanned string not in input buffer" exception >r
 
 : scan-string ( addr u -- addr' u' )
     2dup ?in-inbuf
-    drop source drop - 1+ >in ! \"-parse  save-mem ;
+    drop source drop - 1+ >in !
+    ['] multiline-string \"-parse  save-mem ;
 
-: slit,  postpone sliteral ;
+: slit, ( c-addr1 u -- ) \ gforth
+    \G This is a non-immediate variant of @word{sliteral}@*
+    \G Execution semantics: Copy the string described by @i{c-addr1 u}
+    \G to @i{c-addr2 u} and Compile the following semantis:@*
+    \G Compiled semantics: ( @i{ -- c-addr2 u} ).
+    postpone sliteral ;
 
 ' scan-string
 :noname scan-string slit, ;
 :noname scan-string slit, postpone 2lit, ;
-translate: scan-translate-string
+translate: scan-translate-string ( c-addr u 'ccc"' -- ... ) \ gforth-experimental
+\g This translator parses until the end of the string, concatenates
+\g the first part @i{c-addr u} with the parsed part, and does string
+\g translation for the result.
+
+' noop
+' slit,
+:noname slit, postpone 2lit, ;
+translate: translate-string ( c-addr u -- ... ) \ gforth-experimental
+
+: ?scan-string ( addr u scan-translate-string -- addr' u' translate-string  |  ... translator -- ... translator ) \ gforth-experimental
+    \G Check if the token is an incomplete (side effect free) string,
+    \G and scan the string to complete it.
+    case
+	['] scan-translate-string of  scan-string ['] translate-string  endof
+	0
+    endcase ;
 
 : rec-string ( addr u -- addr u' scan-translate-string | 0 ) \ gforth-experimental
     \G Convert strings enclosed in double quotes into string literals,

@@ -1,7 +1,7 @@
 \ Gforth primitives
 
 \ Authors: Bernd Paysan, Anton Ertl, Neal Crook, Jens Wilke, David Kühling, Gerald Wodni
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -238,6 +238,8 @@ fp = fp_mem;
 \g control
 
 noop	( -- )		gforth
+""Does nothing.  However, code generation does not optimize it away;
+use @word{[noop]} for that.""
 :
  ;
 
@@ -274,8 +276,8 @@ VM_JUMP(EXEC1(*(Xt *)a_addr));
 :
  @ execute ;
 
-;s	( R:w -- )		gforth	semis
-""The primitive compiled by @code{EXIT}.""
+;s	( R:w -- )		gforth-internal	semis
+""The primitive compiled by @code{EXIT}.  It does not clean up locals.""
 SET_IP((Xt *)w);
 
 execute-;s ( xt R:w -- )	gforth-internal execute_semis
@@ -571,8 +573,8 @@ SPs->first_throw |= -(Cell)(SPs->first_throw == 0);
 uncatch ( R:a_recovery R:a_sp R:c_op R:f_fp R:c_lp R:a_oldhandler -- ) gforth-internal
 SPs->handler = a_oldhandler;
 
-fast-throw ( ... wball -- ... wball ) gforth-experimental fast_throw
-""Lightweight @code{throw} variant: only for non-zero balls, and
+fast-throw ( ... nerror -- ... nerror ) gforth-experimental fast_throw
+""Lightweight @code{throw} variant: only for non-zero @i{nerror}s, and
 does not store a backtrace or deal with missing @code{catch}.""
 rp = SPs->handler;
 lp = (Address)rp[1];
@@ -1620,17 +1622,20 @@ ALIVE_DEBUGGING(w1);
  r> r> drop r> drop >r ;
 
 f>r	( r -- )    gforth-experimental	f_to_r
+""Actual stack effect: @code{( r -- R:r )}""
 Float rval[1] = { r };
 rp -= sizeof(Float)/sizeof(Cell);
 memcpy(rp, rval, sizeof(Float));
 
 fr>	( -- r )    gforth-experimental	f_r_from
+""Actual stack effect: @code{( R:r -- r )}""
 Float rval[1];
 memcpy(rval, rp, sizeof(Float));
 rp += sizeof(Float)/sizeof(Cell);
 r = rval[0];
 
 fr@	( -- r )    gforth-experimental	f_r_fetch
+""Actual stack effect: @code{( R:r -- R:r r )}""
 Float rval[1];
 memcpy(rval, rp, sizeof(Float));
 r = rval[0];
@@ -2189,6 +2194,12 @@ u2 = (c_addr2 == NULL ? 0 : strlen((char *)c_addr2));
 free_l(string);
 
 open-pipe	( c_addr u wfam -- wfileid wior )	gforth	open_pipe
+""@i{c-addr u} is the name/path of an OS-level program.  If @i{wfam}
+is @word{r/o}, the standard output of the program is piped into the
+Gforth process and can be read from @i{wfileid}.  If @i{wfam} is
+@word{w/o}, data written to @i{wfileid} is piped as standard input
+into the program.  @i{wior} is 0 if and only if opening the pipe
+succeeded.""
 char * string = cstr(c_addr,u);
 fflush(stdout);
 wfileid=(Cell)popen(string,pfileattr[wfam]); /* ~ expansion of 1st arg? */
@@ -2196,6 +2207,7 @@ wior = IOR(wfileid==0); /* !! the man page says that errno is not set reliably *
 free_l(string);
 
 close-pipe	( wfileid -- wretval wior )		gforth	close_pipe
+""Closes a pipe @i{wfileid} opened with @code{open-pipe}""
 wretval = pclose((FILE *)wfileid);
 wior = IOR(wretval==-1);
 
@@ -2308,6 +2320,22 @@ a_addr = &winch_addr;
 a_addr = NULL;
 #endif
 
+alloc-mmap ( u -- c_addr wior )  gforth-internal alloc_mmap
+""Allocate a memory region through @code{mmap()} with the size @var{u}""
+c_addr = alloc_mmap(u);
+#ifndef MAP_FAILED
+#define MAP_FAILED ((Address) -1)
+#endif
+wior = IOR(c_addr == MAP_FAILED);
+
+pagesize ( -- u )  gforth-internal pagesize
+""Return the size of a page""
+u=pagesize;
+
+guardpage ( c_addr -- )  gforth-internal guardpage
+""Make a page at @var{c_addr} non-accessible""
+page_noaccess(c_addr);
+
 \+
 \+file
 
@@ -2363,8 +2391,10 @@ indicated by @i{u2}$<$@i{u1} and @i{wior}=0.""
 u2 = 0;
 do {
   u2 += fread(c_addr+u2, sizeof(Char), u1-u2, (FILE *)wfileid);
+#ifdef LEGACY_GF
   if (u2>0)
     gf_regetc((FILE *)wfileid);
+#endif
   if((wior = FILEIO(u2<u1 && ferror((FILE *)wfileid))))
     clearerr((FILE *)wfileid);
 } while(wior==TOIOR(EINTR));
@@ -2514,7 +2544,7 @@ utime	( -- dtime )	gforth
 ""Report the current time in microseconds since some epoch.  Use @code{#1000000 um/mod nip} to convert to seconds""
 struct timeval time1;
 gettimeofday(&time1,NULL);
-dtime = timeval2us(&time1);
+dtime = gf_timeval2us(&time1);
 
 cputime ( -- duser dsystem ) gforth
 ""duser and dsystem are the respective user- and system-level CPU
@@ -2525,12 +2555,12 @@ time (since some epoch) for duser and 0 for dsystem.""
 #ifdef HAVE_GETRUSAGE
 struct rusage usage;
 getrusage(RUSAGE_SELF, &usage);
-duser = timeval2us(&usage.ru_utime);
-dsystem = timeval2us(&usage.ru_stime);
+duser = gf_timeval2us(&usage.ru_utime);
+dsystem = gf_timeval2us(&usage.ru_stime);
 #else
 struct timeval time1;
 gettimeofday(&time1,NULL);
-duser = timeval2us(&time1);
+duser = gf_timeval2us(&time1);
 dsystem = DZERO;
 #endif
 
@@ -2545,7 +2575,7 @@ gettimeofday(&time2,NULL);
 time1.tv_sec = time2.tv_sec;
 time1.tv_nsec = time2.tv_usec*1000;
 #endif
-dtime = timespec2ns(&time1);
+dtime = gf_timespec2ns(&time1);
 
 (ns)    ( uns nsec -- wior )	gforth-internal	paren_ns
 ""Wait for usec+uns, values precomputed in Forth""
@@ -2998,7 +3028,7 @@ towards negative infinity.""
 BUILD_BUG_ON(sizeof(SFloat)!=4);
 n2 = n1 >> 2;
 
-f-rot	( r1 r2 r3 -- r3 r1 r2 )	floating	f_not_rote
+f-rot	( r1 r2 r3 -- r3 r1 r2 )	gforth	f_not_rote
 
 flit	( #w -- r )   gforth-internal
 /* For 64 bit systems: a float is just one word */
@@ -3397,19 +3427,21 @@ utfcp = DHI(d1);
 
 \g atomic
 
-!@ ( u1 a_addr -- u2 )	gforth-experimental store_fetch
-""load @var{u2} from @var{a_addr}, and store @var{u1} there, as atomic operation""
+atomic!@ ( w1 a_addr -- w2 )	gforth-experimental atomic_store_fetch
+""Fetch @var{w2} from @var{a_addr}, then store @var{w1} there,
+combined into an atomic operation.""
 #ifdef HAS_ATOMIC
-u2 = __atomic_exchange_n(a_addr, u1, __ATOMIC_SEQ_CST);
+w2 = __atomic_exchange_n(a_addr, w1, __ATOMIC_SEQ_CST);
 #elif defined(HAS_SYNC)
-u2 = __sync_lock_test_and_set(a_addr, u1);
+w2 = __sync_lock_test_and_set(a_addr, w1);
 #else
-u2 = *a_addr;
-*a_addr = u1;
+w2 = *a_addr;
+*a_addr = w1;
 #endif
 
-+!@ ( u1 a_addr -- u2 )	gforth-experimental add_store_fetch
-""load @var{u2} from @var{a_addr}, and increment this location by @var{u1}, as atomic operation""
+atomic+!@ ( u1 a_addr -- u2 )	gforth-experimental atomic_plus_store_fetch
+""Fetch @var{w2} from @var{a_addr}, then increment this location by @var{u1}.
+This atomic operation is commonly known as fetch-and-add.""
 #ifdef HAS_ATOMIC
 u2 = __atomic_fetch_add(a_addr, u1, __ATOMIC_SEQ_CST);
 #elif defined(HAS_SYNC)
@@ -3419,8 +3451,10 @@ u2 = *a_addr;
 *a_addr += u1;
 #endif
 
-?!@ ( unew uold a_addr -- uprev )	gforth-experimental question_store_fetch
-""load @var{uprev} from @var{a_addr}, compare it to @var{uold}, and if equal, store @var{unew} there, as atomic operation""
+atomic?!@ ( unew uold a_addr -- uprev )	gforth-experimental atomic_question_store_fetch
+""Fetch @var{uprev} from @var{a_addr}, compare it to @var{uold}, and if equal,
+store @var{unew} there.  This atomic operation is commonly known
+as compare-and-swap.""
 #ifdef HAS_ATOMIC
 uprev = uold;
 __atomic_compare_exchange_n(a_addr, &uprev, unew, 0,
@@ -3440,6 +3474,18 @@ __atomic_thread_fence(__ATOMIC_RELEASE);
 #elif defined(HAS_SYNC)
 __sync_synchronize();
 #endif
+
+!@ ( w1 a_addr -- w2 )	gforth-experimental store_fetch
+""Fetch @var{w2} from @var{a_addr}, then store @var{w1} there.
+There is also @word{atomic!@} (@pxref{Hardware operations for multi-tasking}).""
+w2 = *a_addr;
+*a_addr = w1;
+
++!@ ( u1 a_addr -- u2 )	gforth-experimental plus_store_fetch
+""Fetch @var{u2} from @var{a_addr}, then increment this location by @var{u1}.
+There is also @word{atomic+!@} (@pxref{Hardware operations for multi-tasking}).""
+u2 = *a_addr;
+*a_addr += u1;
 
 \g peephole
 

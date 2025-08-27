@@ -1,7 +1,7 @@
 \ startup file
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke, Gerald Wodni
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -44,10 +44,10 @@ require sections.fs
 require float.fs
 require extend.fs
 require glocals.fs
+threading-method 1 <> [IF] require fold.fs [THEN]
+require iloops.fs
 require recognizer-ext.fs
 require stuff.fs
-require iloops.fs
-threading-method 1 <> [IF] require fold.fs [THEN]
 require sections2.fs
 require struct0x.fs
 threading-method 1 <> [IF] require stagediv.fs [THEN]
@@ -61,15 +61,16 @@ require smartdots.fs
 require blocks.fs
 require savesys.fs
 require table.fs
-require ekey.fs
-require history.fs
 require quotes.fs
 require vt100.fs
+require ansi.fs
+require ekey.fs
+require history.fs
+require varues.fs
 require rec-string.fs
 require rec-to.fs
 require rec-tick.fs
 require rec-body.fs
-require substitute.fs
 require code.fs
 require see.fs
 require see-ext.fs
@@ -80,19 +81,18 @@ require libcc.fs
 require str-exec.fs
 require dis-gdb.fs
 require gforthrc.fs
-require ansi.fs
 \ require colorize.fs
 require mwords.fs
 require locate1.fs
 require status-line.fs
 require forward.fs
 require marker.fs
-require varues.fs
 require complex.fs
 require struct-val.fs
 require rec-env.fs
 require rec-scope.fs
 require rec-meta.fs
+require substitute.fs
 require csv.fs
 require obsolete.fs
 require unused.fs

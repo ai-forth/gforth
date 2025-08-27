@@ -1,7 +1,7 @@
 \ opengl example
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2014,2016,2017,2018,2019,2021,2022 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2016,2017,2018,2019,2021,2022,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -118,7 +118,7 @@ FVariable motion 0.01e motion f!
 
 : gl-sample ( -- )
     [IFDEF] hidekb  hidekb  +config [THEN]
-    [IFDEF] map-win exposed @ 0= IF  map-win  THEN [THEN]
+    [IFDEF] exposed exposed @ 0= IF  map-win  THEN [THEN]
     ['] VertexShader ['] FragmentShader create-program to program
     program init load-textures .info
     color-theme s>f 1/2 f+ ColorMode!  tri-loop ;

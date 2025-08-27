@@ -1,7 +1,7 @@
 \ Constant folding for some primitives
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2019,2020 Free Software Foundation, Inc.
+\ Copyright (C) 2019,2020,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -18,6 +18,17 @@
 \ You should have received a copy of the GNU General Public License
 \ along with this program. If not, see http://www.gnu.org/licenses/.
 
+2 to: action-of ( interpretation "name" ... -- xt; compilation "name" -- ; run-time ... -- xt ) \ core-ext
+\G @i{Name} is a defer-flavoured word, @i{...} is optional additional
+\G addressing information, e.g., for a defer-flavoured field.  At run-time, perform the
+\G @i{action-of @i{name}} semantics: Push the @i{xt}, that @i{name}
+\G (possibly with additional addressing data on the stack) executes.
+
+: pow2? ( u -- f ) \ gforth pow-two-query
+    \g @i{f} is true if and only if @i{u} is a power of two, i.e., there is
+    \g exactly one bit set in @i{u}.
+    dup dup 1- and 0= and 0<> ;
+
 : 2lits> ( -- d )  lits> lits> swap ;
 : >2lits ( d -- )  swap >lits >lits ;
 : 3lits> ( -- t )  2lits> lits> -rot ;
@@ -25,20 +36,69 @@
 : 4lits> ( -- q )  2lits> 2lits> 2swap ;
 : >4lits ( q -- )  2swap >2lits >2lits ;
 
+: nth ( n addr -- ) swap cells + @ ;
+Create nlits> ' noop , ' lits> , ' 2lits> , ' 3lits> , ' 4lits> ,
+' nth set-does>
+Create n>lits ' noop , ' >lits , ' >2lits , ' >3lits , ' >4lits ,
+' nth set-does>
 
-: fold-constants {: xt m xt: pop xt: unpop xt: push -- :}
-    \ compiles xt with constant folding: xt ( m*n -- l*n ).
-    \ xt-pop pops m items from literal stack to data stack, xt-push
-    \ pushes l items from data stack to literal stack.
-    lits# m u>= if
-	pop xt catch-nobt 0= if
-	    push exit then
-	unpop then
-    xt dup >code-address docol: = if
-	:,
-    else
-	peephole-compile,
-    then ;
+: cfaprim? ( cfa -- flag )
+    [ ' noop >code-address ] Literal
+    [ ' image-header >link @ >code-address ] Literal
+    \ please do not fold this 1+ into the previous literal
+    1+ within ;
+
+: noopt-compile, ( xt -- ) \ gforth-experimental
+    \G compiles @var{xt} using the (unoptimized) default method.
+    case dup >code-address
+	docol:      of  :,              endof
+	dodoes:     of  does,           endof
+	docon:      of  constant,       endof
+	dovar:      of  variable,       endof
+	douser:     of  user,           endof
+	dodefer:    of  defer,          endof
+	doabicode:  of  abi-code,       endof
+	do;abicode: of  ;abi-code,      endof
+	dup cfaprim? ?of  drop  peephole-compile, endof
+	over        ?of peephole-compile, endof \ code word
+	lit, lits, postpone execute 0
+    endcase ;
+
+0 Value lastfold
+: set-fold# ( xt i -- ) 1+ cells lastfold + ! ;
+: set-foldmax ( -- addr )
+    lastfold @ set-fold# ;
+: get-foldmax ( opt-xt -- xt )
+    dup @ 1+ cells + @ ;
+
+: (foldn:) ( xt n "name" -- )
+    create  latestxt to lastfold
+  DOES>
+    >r lits# r@ @ umin 1+ cells r> + @ execute-exit ;
+
+: foldn: ( xt n "name" -- )
+    \ name is a constant-folding word that dispatches between n
+    \ constant-folding words for different numbers of available
+    \ constants.  The entries are initialized with xt.
+    (foldn:) dup , 1+ 0 ?DO dup , LOOP drop ;
+
+: foldn-from: ( xt "name" -- )
+    \ name is a constant-folding word that dispatches between n
+    \ constant-folding words for different numbers of available
+    \ constants.  The entries are copied from the foldn-style word xt.
+    (foldn:) dup @ 2 + cells here swap dup allot move ;
+
+: folding ( n -- )
+    latest >namehm @ >hmcompile, @ swap
+    next-section noname foldn: previous-section
+    lastfold set-optimizer ;
+
+: fold-constant: ( popn pushn "name" -- )
+    n>lits swap >r ['] noopt-compile, r@ foldn:
+    noname Create latestxt r@ set-fold# , r@ n>lits , r> nlits> ,
+  DOES> ( xt -- )
+    >r >r
+    i' cell+ cell+ perform r> catch-nobt 0<> cell and r> + @ execute-exit ;
 
 : folds ( folder-xt "name1" ... "namen" <eol> -- )
     {: folder-xt :} BEGIN
@@ -47,10 +107,10 @@
 	    folder-xt optimizes
     REPEAT ;
 
-: fold1-0 ( xt -- ) 1 ['] lits> ['] >lits ['] noop fold-constants ;
+1 0 fold-constant: fold1-0
 ' fold1-0 folds drop
 
-: fold1-1 ( xt -- ) 1 ['] lits> ['] >lits ['] >lits fold-constants ;
+1 1 fold-constant: fold1-1
 ' fold1-1 folds invert abs negate >pow2
 ' fold1-1 folds 1+ 1- 2* 2/ cells cell/ cell+ cell-
 ' fold1-1 folds floats sfloats dfloats float+
@@ -59,12 +119,13 @@
 ' fold1-1 folds wcwidth
 ' fold1-1 folds 0> 0= 0<
 
-: fold1-2 ( xt -- ) 1 ['] lits> ['] >lits ['] >2lits fold-constants ;
+1 2 fold-constant: fold1-2
 ' fold1-2 folds dup s>d
 
-: fold2-0 ( xt -- ) 2 ['] 2lits> ['] >lits ['] noop fold-constants ;
-' fold2-0    folds 2drop
-: fold2-1 ( xt -- ) 2 ['] 2lits> ['] >2lits ['] >lits fold-constants ;
+2 0 fold-constant: fold2-0
+' fold2-0 folds 2drop
+
+2 1 fold-constant: fold2-1
 ' fold2-1 folds * and or xor
 ' fold2-1 folds min max umin umax
 ' fold2-1 folds nip
@@ -73,28 +134,28 @@
 ' fold2-1 folds d0> d0< d0=
 ' fold2-1 folds /s mods
 
-: fold2-2 ( xt -- ) 2 ['] 2lits> ['] >2lits ['] >2lits fold-constants ;
+2 2 fold-constant: fold2-2
 ' fold2-2 folds m* um* swap d2* /modf /mods u/mod bounds
 
-: fold2-3 ( xt -- ) 2 ['] 2lits> ['] >2lits ['] >3lits fold-constants ;
+2 3 fold-constant: fold2-3
 ' fold2-3 folds over tuck
 
-: fold3-1 ( xt -- ) 3 ['] 3lits> ['] >3lits ['] >lits fold-constants ;
+3 1 fold-constant: fold3-1
 ' fold3-1 folds within select mux */f */s u*/
 
-: fold3-2 ( xt -- ) 3 ['] 3lits> ['] >3lits ['] >2lits fold-constants ;
+3 2 fold-constant: fold3-2
 ' fold3-2 folds um/mod fm/mod sm/rem du/mod */modf */mods u*/mod under+
 
-: fold3-3 ( xt -- ) 3 ['] 3lits> ['] >3lits ['] >3lits fold-constants ;
+3 3 fold-constant: fold3-3
 ' fold3-3 folds rot -rot
 
-: fold4-1 ( xt -- ) 4 ['] 4lits> ['] >4lits ['] >lits fold-constants ;
+4 1 fold-constant: fold4-1
 ' fold4-1 folds d= d> d>= d< d<= du> du>= du< du<=
 
-: fold4-2 ( xt -- ) 4 ['] 4lits> ['] >4lits ['] >2lits fold-constants ;
+4 2 fold-constant: fold4-2
 ' fold4-2 folds d+ d- 2nip
 
-: fold4-4 ( xt -- ) 4 ['] 4lits> ['] >4lits ['] >4lits fold-constants ;
+4 4 fold-constant: fold4-4
 ' fold4-4 folds 2swap
 
 \ optimize +loop (not quite folding)
@@ -149,47 +210,30 @@ optimizes fpick
 
 \ optimize + -
 
-: opt+- {: xt: op -- :}
-    lits# 1 = if
-        0 lits> op ?dup-if
-            ['] lit+ peephole-compile, , then
-	exit then
-    action-of op fold2-1 ;
-' opt+- folds + -
+' fold2-1 noname foldn-from:
+[: 0 lits> rot execute ?dup-if ['] lit+ peephole-compile, , then ;] 1 set-fold#
+latestxt folds + -
 
-: opt* ( xt -- )
-    drop lits# 1 = if
-        lits> case
-            0    of postpone drop 0 lit, endof
-            2    of postpone 2*    endof
-            cell of postpone cells endof
-            dup pow2? ?of log2 lit, postpone lshift endof
-            dup lit, ['] * peephole-compile,
-        endcase
-    else
-        ['] * fold2-1
-    then ;
-' opt* optimizes *
-
-: opt-array>mem ( xt -- )
-    drop lits# 1 = if
-        lits> dup ]] literal * literal [[
-    else
-        ['] array>mem fold2-2
-    then ;
-' opt-array>mem optimizes array>mem
+' fold2-1 noname foldn-from:
+[: lits> case
+	0    of postpone drop 0 lit, endof
+	2    of postpone 2*    endof
+	[ cell 1 sfloats <> ] [IF]
+	    1 sfloats of postpone sfloats  endof [THEN]
+	cell of postpone cells endof
+	[ cell 1 dfloats <> ] [IF]
+	    1 dfloats of postpone dfloats  endof [THEN]
+	dup pow2? ?of log2 lit, postpone lshift endof
+	dup lit, over peephole-compile,
+    endcase drop ;] 1 set-fold#
+latestxt optimizes *
 
 \ optimize lit @ into lit@
-: opt@ ( xt -- )
-    drop lits# 1 u>= if
-	lits> ['] lit@ peephole-compile, ,
-    else
-	['] @ peephole-compile, then ;
-' opt@ optimizes @
+' fold1-1 noname foldn-from:
+[: drop lits> ['] lit@ peephole-compile, , ;] 1 set-fold#
+latestxt optimizes @
 
 \ optimize lit execute into call
-:noname ( xt -- )
-    lits# 1 u>= if
-	drop lits> compile,
-    else  peephole-compile, then ;
-optimizes execute
+' fold1-1 noname foldn-from:
+[: ( xt -- ) drop lits> compile, ;] 1 set-fold#
+latestxt optimizes execute

@@ -1,7 +1,7 @@
 \ A powerful locals implementation
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke, Neal Crook
-\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2007,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2007,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -27,7 +27,7 @@
 \ restricted and have an ugly interface.
 
 \ So, we implement the locals wordset, but do not recommend using
-\ locals-ext (which is a really bad user interface for locals).
+\ local-ext (which is a really bad user interface for locals).
 
 \ We also have a nice and powerful user-interface for locals: locals are
 \ defined with
@@ -101,7 +101,7 @@ User locals-size \ this is the current size of the locals stack
     
 : opt-table: ( unit -- )
     Create 0 , , xts,
-    here latestnt dup >r 2 cells + - cell/ r> !
+    here latestxt >body dup >r 2 cells + - cell/ r> !
     DOES> ( xt table -- )
     >r lits# 1 u>= if
         lits> dup r@ cell+ @ /mod swap 0= over r@ @ u< and if
@@ -110,16 +110,16 @@ User locals-size \ this is the current size of the locals stack
     rdrop peephole-compile, ;
 
 cell opt-table: opt-@localn @local0 @local1 @local2 @local3 @local4 @local5 @local6 @local7 
-latestnt optimizes @localn
+latestxt optimizes @localn
 
 cell opt-table: opt-!localn !local0 !local1 !local2 !local3 !local4 !local5 !local6 !local7
-latestnt optimizes !localn
+latestxt optimizes !localn
 
 \ peephole optimizer enabled 2compile,
 
 $Variable peephole-opts
 
-: 2compile, ( xt1 xt2 -- ) \ gforth-experimental two-compile-comma
+: 2compile, ( xt1 xt2 -- ) \ gforth-internal two-compile-comma
     \G equivalent to @code{@i{xt1} compile, @i{xt2} compile,}, but
     \G also applies peephole optimization.
     peephole-opts $@ bounds ?DO
@@ -171,15 +171,18 @@ Defer locals-post,
 
 ' translate-nt >body 2@ swap
 ' locals-post,
-translate: translate-locals
+translate: translate-locals ( ... nt -- ... )
 \ undocumented for good reasons
 
-: locals-rec [ ' locals >wordlist ] Literal execute
+: rec-locals ( addr u -- nt translate-locals | 0 ) \ gforth-experimental
+    \G search the locals wordlist and if found replace
+    \G the translator with @code{translate-locals}.
+    [ ' locals >wordlist compile, ]
     dup ['] translate-nt = IF  drop ['] translate-locals  THEN ;
 
-' search-order ' locals-rec 2 recognizer-sequence: rec-locals
+' search-order ' rec-locals 2 recognizer-sequence: rec-nt-locals
 
-: activate-locals   ['] rec-locals is rec-nt ;
+: activate-locals   ['] rec-nt-locals is rec-nt ;
 : deactivate-locals ['] search-order is rec-nt ;
 
 :noname defers wrap@ ['] rec-nt defer@ deactivate-locals ; is wrap@
@@ -295,9 +298,12 @@ Defer locals-list!
 
 (field) locals-name-size+ hmsize cell+ , \ fields + wiggle room, name size must be added
 
+Defer locals-warning  ' noop is locals-warning
+
 : create-local1 ( does-xt to-xt "name" -- a-addr )
-    create
-    immediate restrict  set-to set-does>
+    create locals-warning
+    immediate restrict
+    set-to set-does>
     here 0 , ( place for the offset ) ;
 
 16384 extra-section locals-headers
@@ -369,7 +375,7 @@ locals-types definitions
     \G Define variable-flavoured cell local @i{name} @code{( -- a-addr )}
     [: ( Compilation: -- ) ( Run-time: -- w )
 	@ laddr#, ;]
-    ['] no-to create-local
+    ['] n/a create-local
     ['] compile-pushlocal-w ;
 
 : F: ( compilation "name" -- a-addr xt; run-time r -- ) \ gforth f-colon
@@ -417,10 +423,10 @@ Defer default: ' W: is default:
 :noname ( c-addr u1 "name" -- a-addr xt ) \ gforth <local>bracket (unnamed)
     W^ drop ['] compile-pushlocal-[ ;
 
-: | ( -- ) \ gforth bar
+: | ( -- ) \ local-ext bar
     \G Locals defined behind @code{|} are not initialized from the
-    \G stack; so the run-time of words like @code{W:} changes to
-    \G @code{( -- )}.
+    \G stack; so the run-time stack effect of the locals definitions
+    \G after @word{|} is @code{( -- )}.  
     val-part on ['] val-part-off ;
 
 \ you may want to make comments in a locals definitions group:
@@ -444,10 +450,10 @@ xt: some-xtlocal 2drop
 w^ some-waddr 2drop
 
 \ the following gymnastics are for declaring locals without type specifier.
-\ we use a catch-all recognizer to do t' new-locals-rec  hat
+\ we use a catch-all recognizer to do t' rec-new-locals  hat
 
 >r
-: new-locals-rec ( caddr u -- [size] nfa )
+: rec-new-locals ( caddr u -- [size] nfa )
 \ this is the find method of the new-locals vocabulary
 \ make a new local with name caddr u; w is ignored
 \ the returned nfa denotes a word that produces what W: produces
@@ -461,7 +467,7 @@ w^ some-waddr 2drop
     ELSE  ['] default: defer@  THEN  nt>rec ;
 previous
 
-' new-locals-rec  ' locals-types >wordlist 2 recognizer-sequence: new-locals
+' rec-new-locals  ' locals-types >wordlist 2 recognizer-sequence: new-locals
 
 \ and now, finally, the user interface words
 : { ( -- hmaddr u wid 0 ) \ gforth open-brace
@@ -498,11 +504,11 @@ locals-types definitions
 synonym :} } ( hmaddr u wid 0 xt1 ... xtn -- ) \ gforth colon-close-brace
 \g Ends locals definitions.
 
-: -- ( hmaddr u wid 0 ... -- ) \ locals- gforth dash-dash
-    \G During locals definitions everything from @code{--} to
-    \G @code{:@}} is ignored.  This is typically used when you want to
-    \G make a locals definition serve double duty as a stack effect
-    \G description.
+: -- ( hmaddr u wid 0 ... -- ) \ locals- local-ext dash-dash
+    \G During a locals definitions with @word{{:} everything from
+    \G @code{--} to @word{:}} is ignored.  This is typically used
+    \G when you want to make a locals definition serve double duty as
+    \G a stack effect description.
     }
     BEGIN '}' parse dup WHILE
         + 1- c@ dup bl = swap ':' = or UNTIL
@@ -617,7 +623,7 @@ is adjust-locals-list
 : locals-;-hook ( sys addr xt sys -- sys )
     ?struc
     deactivate-locals
-    ['] ->here locals-headers
+    [: ->here ['] some-waddr lastnt ! ;] locals-headers
     DEFERS ;-hook ;
 
 \ THEN (another control flow from before joins the current one):
@@ -759,7 +765,7 @@ is adjust-locals-list
 also locals-types
 : noname-w: ( -- n )
     \ generate local; its offset is n
-    POSTPONE { 0 0 nextname W: ['] latestnt locals-headers >r } r> @ ;
+    POSTPONE { 0 0 nextname W: ['] latestxt locals-headers >r } r> @ ;
 previous
 
 
@@ -778,8 +784,9 @@ previous
     endcase ;
 
 : locals| ( ... "name ..." -- ) \ local-ext locals-bar
-    \ don't use 'locals|'! use '{'! A portable and free '{'
-    \ implementation is compat/anslocals.fs
+    \G Don't use @samp{locals| this read can't you|}!  Use @code{@{:
+    \G you can read this :@}} instead.! A portable and free @word{{:}
+    \G implementation can be found in @file{compat/xlocals.fs}.
     BEGIN
 	parse-name 2dup s" |" str= 0=
     WHILE

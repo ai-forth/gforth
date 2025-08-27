@@ -1,7 +1,7 @@
 \ Pulse audio driver
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -156,18 +156,32 @@ Variable def-output$
 	    ?requests
     REPEAT ;
 
+: pa-open-server ( -- )
+    pa-ctx ${PULSE_SERVER}
+    dup 0= IF  
+	2drop [: ." unix:" ${XDG_RUNTIME_DIR} type ." /pulse/native" ;] $tmp
+    THEN  save-mem over >r compact-filename
+    pulse( ." server: " 2dup type cr )
+    ${SNAP} d0<> IF \ snap workaround
+	2dup ':' $split 2swap "unix" str=
+	IF  file-status nip 0<  ELSE  2drop false  THEN  IF
+	    5 /string ${XDG_RUNTIME_DIR} tuck dirname dup 0<> + 2>r
+	    /string r@ negate /string 2r> 2over drop swap move
+	    -5 /string
+	    over "unix:" rot swap move
+	    pulse( ." snap server: " 2dup type cr )
+	THEN
+    THEN
+    PA_CONTEXT_NOAUTOSPAWN 0 pa_context_connect ?pa-ior
+    r> free throw ;
+
 : pulse-init ( -- )
     stacksize4 NewTask4 to pa-task
     pa-task activate   debug-out debug-vector !  nothrow
     [:  pa_mainloop_new to pa-ml
 	pa-ml pa_mainloop_get_api to pa-api
 	pa-api app-name $@ pa_context_new to pa-ctx
-	pa-ctx ${PULSE_SERVER}
-	dup IF  save-mem compact-filename
-	ELSE  2drop [: ." unix:" ${XDG_RUNTIME_DIR} type ." /pulse/native" ;] $tmp save-mem
-	THEN
-	pulse( ." server: " 2dup type cr )
-	PA_CONTEXT_NOAUTOSPAWN 0 pa_context_connect ?pa-ior
+	pa-open-server
 	pa-ctx pa-context-notify-cb ['] pa-notify-state
 	pa_context_set_state_callback
 	pa-ctx pa-context-subscribe-cb ['] pa-subscribe
@@ -296,7 +310,7 @@ Defer write-record
     pa-ml       ?dup-IF  pa_mainloop_free              0 to pa-ml        THEN
     0 to pa-task  kill-task ;
 
-: kill-pulse ( -- )
+: kill-pulses ( -- )
     pa-task IF
 	['] kill-pulse pa-task send-event
 	5 0 DO  pa-task 0= ?LEAVE  1 ms  LOOP
@@ -305,7 +319,4 @@ Defer write-record
 set-current
 previous pulse
 
-0 warnings !@
-: bye ( -- )
-    kill-pulse bye ;
-warnings !
+:is bye kill-pulses defers bye ;

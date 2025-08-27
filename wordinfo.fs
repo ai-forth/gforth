@@ -44,7 +44,7 @@ require look.fs
     ((name>))
     >does-code 0<> ;
 
-: defered? ( nfa -- flag )
+: deferred? ( nfa -- flag )
     ((name>)) >code-address dodefer: = ;
 
 : colon? ( nfa -- flag )
@@ -53,17 +53,9 @@ require look.fs
 \ the above words could be factored with create-does>, but this would
 \ probably make this file incompatible with cross.
 
-[IFDEF] forthstart
-    : xtprim? ( xt -- flag )
-	>code-address ['] noop >code-address
-	['] image-header >link @ >code-address 1+ within ;
-[ELSE]
-: xtprim? ( xt -- flag )
-    dup >body swap >code-address = ; \ !! works only for indirect threaded code
-				     \ !! does not work for primitives
-[THEN]
 : prim? ( nfa -- flag )
-    name>interpret xtprim? ;
+    >code-address cfaprim? ;
+synonym xtprim? prim?
 
 \ None nestable IDs:
 
@@ -93,7 +85,7 @@ CREATE InfoTable
         ' Con?     , ' Con-color ,
         ' Var?     , ' Var-color ,
         ' Value?   , ' Val-color ,
-        ' Defered? , ' Def-color ,
+       ' Deferred? , ' Def-color ,
         ' Does?    , ' Doe-color ,
         ' Colon?   , ' Col-color ,
 	' User?    , ' Use-color ,

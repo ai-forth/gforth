@@ -1,7 +1,7 @@
 \ env variable recognizer
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2016,2017,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2016,2017,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,7 +20,11 @@
 
 : env$, ( addr u -- )  slit, postpone getenv ;
 
-' getenv ' env$, ' slit, >postponer translate: translate-env
+' getenv ' env$, ' slit, >postponer
+translate: translate-env ( c-addr u -- ... ) \ gforth-experimental
+\G @i{c-addr u} describes the name of the environment variable.  The
+\G translator actions produce the contents of the environment
+\G variable.
 
 : rec-env ( addr u -- addr u translate-env | 0 ) \ gforth
     \G words enclosed by @code{$@{} and @code{@}} are passed to @code{getenv}

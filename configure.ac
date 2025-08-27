@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 #Authors: Bernd Paysan, Anton Ertl
-#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+#Copyright (C) 1995,1996,1997,1998,2000,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -21,13 +21,13 @@ dnl Process this file with autoconf to produce a configure script.
 
 #We use some automake macros here,
 #but don't use automake for creating Makefile.in
-AC_INIT([gforth],[0.7.9_20241120],[https://savannah.gnu.org/bugs/?func=addbug&group=gforth])
+AC_INIT([gforth],[0.7.9_20250817],[https://savannah.gnu.org/bugs/?func=addbug&group=gforth])
 AC_PREREQ([2.69])
 AC_CONFIG_MACRO_DIR([m4])
 #snapshots have numbers major.minor.release_YYYYMMDD
 #note that lexicographic ordering must be heeded.
 #I.e., 0.4.1_YYYYMMDD must not exist before 0.4.1!
-UPDATED="November 20, 2024"
+UPDATED="August 17, 2025"
 AC_SUBST(UPDATED)
 AC_CONFIG_HEADERS(engine/config.h)
 AC_USE_SYSTEM_EXTENSIONS
@@ -47,6 +47,10 @@ AC_SUBST(LTDLDEPS)
 AC_SUBST(LTDLINCL)
 AC_SUBST(LIBLTDL)
 AC_SUBST(LTDL_LDLIBS)
+
+UNDERSCORE=
+test x$sys_symbol_underscore = xyes && UNDERSCORE=_
+AC_SUBST(UNDERSCORE)
 
 #suppress "-flto=auto"
 case "$CFLAGS" in
@@ -135,6 +139,7 @@ engine_fast2='engine-fast2$(OPT).o'
 no_dynamic=""
 image_i=""
 signals_o="io.o signals.o"
+ENGINE_FLAGS=""
 
 AC_CANONICAL_HOST
 AC_ARG_WITH(ec,
@@ -237,7 +242,7 @@ AC_SUBST(EXTRAS)
 AC_ARG_WITH(install,
 	AS_HELP_STRING([--with-install=<things>],[  Install extra <things>]),
 [if test "$withval" != "no"; then
-    for i in ${withval//,/ }
+    for i in `echo ${withval} | tr , ' '`
     do
 	echo "install $i with $ac_configure_args ..."
 	eval ./install-$i.sh $ac_configure_args
@@ -296,10 +301,11 @@ AC_ARG_VAR(ac_cv_sizeof___uint128_t, [sizeof(__uint128_t)])
 AC_ARG_VAR(ac_cv_c_bigendian, [Is the target big-endian ("yes" or "no")?])
 AC_ARG_VAR(no_dynamic_default, [run gforth with --dynamic (0) or --no-dynamic (1) by default])
 AC_ARG_VAR(condbranch_opt, [enable (1) or disable (0) using two dispatches for conditional branches])
-AC_ARG_VAR(skipcode, [assembly code for skipping 16 bytes of code])
+AC_ARG_VAR(skipcode, [assembly code for skipping 4 bytes of code])
 AC_ARG_VAR(asmcomment, [assembler comment start string])
 AC_ARG_VAR(arm_cacheflush, [file containing ARM cacheflush function (without .c)])
 AC_ARG_VAR(LTDL_LIBRARY_PATH, [additional directories for libltdl (for some 64-bit platforms)])
+AC_ARG_VAR(extra_cflags, [additional defines for main.c])
 
 test -z "$HOSTCC" && HOSTCC='$(GCC)'
 
@@ -322,9 +328,25 @@ AC_SYS_LARGEFILE
 #currently we force direct threading this way.  Eventually we should
 #setup in the arch and engine files right
 
+AC_CHECK_PROGS(COWSAY, cowsay)
+AC_CHECK_PROGS(LOLCAT, lolcat)
+
 AC_PROG_CC
 
 test "$GCC" = "yes" || AC_MSG_ERROR(Gforth uses GNU C extensions and requires GCC 4.0 or higher)
+
+# stop configure with an error when using an unsuitable C compiler
+UNSUITABLE_CC=${UNSUITABLE_CC:-clang}
+if test "`echo | $CC -dM -E - | grep -w __${UNSUITABLE_CC}__`" = "#define __${UNSUITABLE_CC}__ 1"
+then
+  if test -z "$COWSAY" -o -z "$LOLCAT"
+  then
+    AC_MSG_ERROR(Clang has a long unfixed bug that makes it unsuitable to compile Gforth. Please use GCC instead)
+  else
+    cowsay -f dragon "*** Clang has a long unfixed bug that makes it unsuitable to compile Gforth. Please use GCC instead ***"|lolcat --seed=50 -i -F 0.02
+    exit
+  fi
+fi
 
 test "x$SH" = "x" && SH="/bin/sh"
 
@@ -354,6 +376,7 @@ AC_SUBST(EC_MODE)
 AC_SUBST(engine2)
 AC_SUBST(engine_fast2)
 AC_SUBST(no_dynamic)
+AC_SUBST(extra_cflags)
 AC_SUBST(image_i)
 AC_SUBST(signals_o)
 AC_SUBST(mi_prefix)
@@ -386,9 +409,59 @@ AC_MSG_RESULT($ac_export_dynamic)
 AX_GCC_BUILTIN(__builtin___clear_cache)
 
 AS_VAR_PUSHDEF([ac_var], [ax_cv_have___builtin_add_overflow])
+
+#*BSD has three security theater mesures: w^x, execute-only, and branch protection
+#We disable all.
+
+if test "$ac_wxneeded" != no; then
+  if test "$ac_wxneeded" != yes; then
+    AC_MSG_CHECKING([whether the linker accepts -Wl,-z,wxneeded])
+    OLDLDFLAGS=$LDFLAGS
+    LDFLAGS="$LDFLAGS -Wl,-z,wxneeded"
+    AC_RUN_IFELSE([AC_LANG_SOURCE([[int main(){return 0;}]])],[ac_wxneeded=yes],[ac_wxneeded=no],[ac_wxneeded=no])
+    LDFLAGS=$OLDLDFLAGS
+  fi
+fi
+
+test $ac_wxneeded = yes && LDFLAGS="$LDFLAGS -Wl,-z,wxneeded"
+test $ac_wxneeded = yes && AC_DEFINE(HAS_WXNEEDED,,[Define if your OS does WX])
+AC_MSG_RESULT($ac_wxneeded)
+
+if test "$ac_no_execute_only" != no; then
+  if test "$ac_no_execute_only" != yes; then
+    AC_MSG_CHECKING([whether the linker accepts -Wl,--no-execute-only])
+    OLDLDFLAGS=$LDFLAGS
+    LDFLAGS="$LDFLAGS -Wl,--no-execute-only"
+    AC_RUN_IFELSE([AC_LANG_SOURCE([[int main(){return 0;}]])],[ac_no_execute_only=yes],[ac_no_execute_only=no],[ac_no_execute_only=no])
+    LDFLAGS=$OLDLDFLAGS
+  fi
+fi
+
+test $ac_no_execute_only = yes && LDFLAGS="$LDFLAGS -Wl,--no-execute-only"
+test $ac_no_execute_only = yes && AC_DEFINE(HAS_NO_EXECUTE_ONLY,,[Define if your OS does WX])
+AC_MSG_RESULT($ac_no_execute_only)
+
+if test "$ac_nobtcfi" != no; then
+  if test "$ac_nobtcfi" != yes; then
+    AC_MSG_CHECKING([whether the linker accepts -Wl,-z,nobtcfi])
+    OLDLDFLAGS=$LDFLAGS
+    OLDCFLAGS=$CFLAGS
+    LDFLAGS="$LDFLAGS -Wl,-z,nobtcfi"
+    CFLAGS="$CFLAGS -mbranch-protection=none"
+    AC_RUN_IFELSE([AC_LANG_SOURCE([[int main(){return 0;}]])],[ac_nobtcfi=yes],[ac_nobtcfi=no],[ac_nobtcfi=no])
+    LDFLAGS=$OLDLDFLAGS
+    CFLAGS=$OLDCFLAGS
+  fi
+fi
+
+test $ac_nobtcfi = yes && LDFLAGS="$LDFLAGS -Wl,-z,nobtcfi"
+test $ac_nobtcfi = yes && ENGINE_FLAGS="$ENGINE_FLAGS -mbranch-protection=none"
+test $ac_nobtcfi = yes && AC_DEFINE(HAS_NOBTCFI,,[Define if your OS does WX])
+AC_MSG_RESULT($ac_nobtcfi)
+
 case "$host_cpu" in
-    riscv*|mips*|alpha*)
-        # RISCV has no branch on overflow, so GCC's emulation is worse
+    riscv*|mips*|alpha*|loongarch*|ia64*)
+        # RISCV and IA64 have no branch on overflow, so GCC's emulation is worse
 	# than what we do; the same is likely true for MIPS and Alpha
         AS_VAR_SET([ac_var], [no])
 	;;
@@ -411,21 +484,15 @@ FAST=no
 ANDROID_EXTRA=""
 case "$host_os" in
     *android*)
-	case "$host_cpu" in
-	    arm64*|aarch64*|mips64*)
-		AC_DEFINE(__ANDROID_API__,21,[Define if you use Android])
-		ANDROID_EXTRA=-D__ANDROID_API__=21
-		;;
-	    *)
-		AC_DEFINE(__ANDROID_API__,21,[Define if you use Android])
-		ANDROID_EXTRA=-D__ANDROID_API__=21
-		;;
-	esac
+	AC_DEFINE(__ANDROID_API__,21,[Define if you use Android])
+	ANDROID_EXTRA=-D__ANDROID_API__=21
 	;;
 esac
 AC_SUBST(ANDROID_EXTRA)
 #terminology is a bit unusual here: The host is the system on which
 #gforth will run; the system on which configure will run is the `build'
+UNIFIED_ENGINE=
+AC_SUBST(UNIFIED_ENGINE)
 case "$host_cpu" in
 	arm64*|aarch64*)
 		machine=arm64
@@ -434,6 +501,7 @@ case "$host_cpu" in
 		if test -z "$arm_cacheflush"; then
 		   AC_LIBOBJ(arm64-cacheflush)
 		fi
+		UNIFIED_ENGINE=lib
 		;;
 	arm*)
 		machine=arm
@@ -483,6 +551,7 @@ Dynamic NC generation disabled."
 		;;
 	sparc*)
 		machine=sparc
+                test x$STACK_CACHE_REGS = x && STACK_CACHE_REGS=3
 		;;
 	i386)
 		machine=386
@@ -508,7 +577,7 @@ Dynamic NC generation disabled."
 		;;
 	i*86)
 		machine=386
-		test "$skipcode" || skipcode="nopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)"
+		test "$skipcode" || skipcode="nopl	(%eax,%eax,1)"
 		CFLAGS="$CFLAGS -fomit-frame-pointer -fforce-addr"
 		CFLAGS_1="$CFLAGS"
 		CFLAGS="$CFLAGS_1 -march=athlon64 -mtune=generic"
@@ -527,7 +596,7 @@ Dynamic NC generation disabled."
 		in
 		    *-m32*|*-mx32*)
 		    	machine=386
-			test "$skipcode_arch" || skipcode_arch="nopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)"
+			test "$skipcode_arch" || skipcode_arch="nopl	(%eax,%eax,1)"
 			CFLAGS="$CFLAGS -fomit-frame-pointer -fforce-addr"
 			CFLAGS_1="$CFLAGS"
 			CFLAGS="$CFLAGS -march=athlon64"
@@ -537,18 +606,19 @@ Dynamic NC generation disabled."
 			in
 			    *gnux32)
 			    	machine=386
-				test "$skipcode_arch" || skipcode_arch="nopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)\nnopl (%eax,%eax,1)"
+				test "$skipcode_arch" || skipcode_arch="nopl	(%eax,%eax,1)"
 				CFLAGS="$CFLAGS -fomit-frame-pointer -fforce-addr"
 				CFLAGS_1="$CFLAGS"
 				CFLAGS="$CFLAGS -march=athlon64"
 			        ;;
 			    *)
 		    		machine=amd64
-				test "$skipcode_arch" || skipcode_arch="nopl (%rax,%rax,1)\nnopl (%rax,%rax,1)\nnopl (%rax,%rax,1)\nnopl (%rax,%rax,1)"
+				test "$skipcode_arch" || skipcode_arch="nopl	(%rax,%rax,1)"
 				CFLAGS="$CFLAGS -fomit-frame-pointer"
 				CCVER=`$CC -v 2>&1 | grep ' version ' | cut -f3 -d' '`
 				test ${CCVER%.*.*} -ge 7 && test x$STACK_CACHE_REGS = x && STACK_CACHE_REGS=3
 				unset CCVER
+				UNIFIED_ENGINE=lib
 				;;
 			esac
 			;;
@@ -556,8 +626,10 @@ Dynamic NC generation disabled."
 		;;
 	ia64*)
 		machine=ia64
-		AC_LIBOBJ(ia64_flush_icache_block)
-		test "$skipcode" || skipcode="nop.i 0"
+                test x$STACK_CACHE_REGS = x && STACK_CACHE_REGS=3
+                CHECKFLAGS="$CHECKFLAGS -mno-sched-br-data-spec -mno-sched-ar-data-spec -mno-sched-control-spec -mno-sched-in-control-spec"
+		AC_LIBOBJ(ia64-flush_icache_block)
+		test "$skipcode" || skipcode="nop.i	0"
 		#".skip 16" passes the test below,
 		# but gives an assembler error in engine
 		;;
@@ -592,6 +664,12 @@ Dynamic NC generation disabled."
 Dynamic Code generation disabled (relocation and delay slot issues).]"
 		fi
 		;;
+	loongarch64*)
+		machine=loongarch64
+		CFLAGS="$CFLAGS -fomit-frame-pointer"
+                test x$STACK_CACHE_REGS = x && STACK_CACHE_REGS=3
+		UNIFIED_ENGINE=lib
+		;;
 	alpha*)
 		machine=alpha
 		#full IEEE FP support for more uniformity across platforms:
@@ -610,16 +688,18 @@ Dynamic Code generation disabled (relocation and delay slot issues).]"
 
                 #the skipcode that is normally selected below does not
                 #work with gcc-3.[34]
-		test "$skipcode" || skipcode="nop\nnop\nnop\nnop"
+		test "$skipcode" || skipcode="nop"
                 #Power 3.1 prefixed instructions must not cross 64-byte
                 #boundaries; we cannot guarantee that for --dynamic, so
                 #we disable prefixed instructions
                 CHECKFLAGS=$CHECKFLAGS" -mno-prefixed"
+		UNIFIED_ENGINE=lib
 		;;
 	riscv*)
 		machine=riscv
 		CFLAGS="$CFLAGS -fomit-frame-pointer"
                 test x$STACK_CACHE_REGS = x && STACK_CACHE_REGS=3
+		UNIFIED_ENGINE=lib
 		;;
 	tile*)
 		machine=tile
@@ -898,12 +978,19 @@ test $ac_cv_sizeof_off_t -gt $ac_cv_sizeof_char_p
 ac_small_off_t=$?
 AC_DEFINE_UNQUOTED(SMALL_OFF_T,$ac_small_off_t,[1 if off_t fits in a Cell])
 
-ENGINE_FLAGS=
 AC_SUBST(ENGINE_FLAGS)
 
 # Try a number of flags as workarounds
 
-CHECKFLAGS=$CHECKFLAGS" no-gcse caller-saves no-defer-pop no-inline wrapv char-unsigned no-strict-aliasing no-cse-follow-jumps no-reorder-blocks no-reorder-blocks-and-partition no-toplevel-reorder no-trigraphs align-labels=1 align-loops=1 align-jumps=1 no-delete-null-pointer-checks cf-protection=none no-tree-vectorize no-lto llvm=--tail-dup-indirect-size=0"
+CHECKFLAGS="$CHECKFLAGS no-gcse caller-saves no-defer-pop no-inline wrapv char-unsigned no-strict-aliasing no-cse-follow-jumps no-reorder-blocks no-reorder-blocks-and-partition no-toplevel-reorder no-trigraphs align-labels=1 align-loops=1 align-jumps=1 no-delete-null-pointer-checks cf-protection=none no-tree-vectorize llvm=--tail-dup-indirect-size=0"
+
+case "$host_os" in
+     *netbsd*)
+	;;
+     *)
+        CHECKFLAGS="$CHECKFLAGS no-lto"
+	;;
+esac
 
 for i in $CHECKFLAGS
 do
@@ -941,8 +1028,8 @@ LDFLAGS_1="$LDFLAGS"
 CFLAGS="$CFLAGS -pthread"
 LDFLAGS="$LDFLAGS -pthread"
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ac_pthread=yes;ENGINE_FLAGS="$ENGINE_FLAGS -pthread"],[ac_pthread=no])
-test "$ac_pthread" == yes || CFLAGS="$CFLAGS_1"
-test "$ac_pthread" == yes || LDFLAGS="$LDFLAGS_1"
+test "$ac_pthread" = yes || CFLAGS="$CFLAGS_1"
+test "$ac_pthread" = yes || LDFLAGS="$LDFLAGS_1"
 AC_MSG_RESULT($ac_pthread)
 
 if test -z "$LIBTOOL_CC"
@@ -1013,7 +1100,7 @@ case "$host_os" in
 		CFLAGS_1="$CFLAGS"
 		CFLAGS="$CFLAGS -no-cpp-precomp"
 		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ac_no_cpp_precomp=yes;ENGINE_FLAGS="$ENGINE_FLAGS -no-cpp-precomp"],[ac_no_cpp_precomp=no])
-		test "$ac_no_cpp_precomp" == yes || CFLAGS="$CFLAGS_1"
+		test "$ac_no_cpp_precomp" = yes || CFLAGS="$CFLAGS_1"
 		AC_MSG_RESULT($ac_no_cpp_precomp)
 		DIRSEP="/"
 		PATHSEP=":"
@@ -1031,7 +1118,7 @@ case "$host_os" in
 		CFLAGS_1="$CFLAGS"
 		CFLAGS="$CFLAGS -no-cpp-precomp"
 		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ac_no_cpp_precomp=yes;ENGINE_FLAGS="$ENGINE_FLAGS -no-cpp-precomp"],[ac_no_cpp_precomp=no])
-		test "$ac_no_cpp_precomp" == yes || CFLAGS="$CFLAGS_1"
+		test "$ac_no_cpp_precomp" = yes || CFLAGS="$CFLAGS_1"
 		AC_MSG_RESULT($ac_no_cpp_precomp)
 		DIRSEP="/"
 		PATHSEP=":"
@@ -1145,7 +1232,7 @@ else
   GKERNEL="kernl32l.fi kernl32b.fi kernl64l.fi kernl64b.fi"
 fi
 
-#check how to do asm(".skip 16")
+#check how to do asm(".skip 4")
 if test "$host_alias" = "`echo $build_alias | sed -e s/x86_64/i686/g`"
 then
     cross_compiling=no # we can actually execute the code
@@ -1161,7 +1248,7 @@ elif test -z "$skipcode"; then
     skipcode=no
     CFLAGS_1="$CFLAGS"
     CFLAGS="$CFLAGS $ENGINE_FLAGS"
-    for i in ".skip 16" ".block 16" ".org .+16" ".=.+16" ".space 16" "$skipcode_arch"
+    for i in ".skip 4" ".block 4" ".org .+4" ".=.+4" ".space 4" "$skipcode_arch"
     do
     AC_MSG_CHECKING([if and how we can waste code space])
 	AC_RUN_IFELSE([AC_LANG_SOURCE([[#include <stdio.h>
@@ -1171,8 +1258,8 @@ int foo(int x, int y, int z)
   static void *labels[]={&&label1, &&label2, &&label3};
   if (x) {
     y++; /* workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=12108 */
-  label1: asm("$i"); /* or ".space 16" or somesuch */
-  label2: asm("$i"); /* or ".space 16" or somesuch */
+  label1: asm("$i"); /* or ".space 4" or somesuch */
+  label2: asm("$i"); /* or ".space 4" or somesuch */
   label3: ; /* workaround clang */
   }
   {
@@ -1183,12 +1270,12 @@ int foo(int x, int y, int z)
 int main(int argc, char ** argv, char ** env)
 {
   int skip=foo(0,0,0);
-  if(skip<16) {
+  if(skip<4) {
     char cmd[80];
     snprintf(cmd, sizeof(cmd), "objdump -zl --disassemble=foo %s", argv[0]);
     system(cmd);
   }
-  return skip<16;
+  return skip<4;
 }
 	]])],[skipcode=$i; break
 	],[AC_MSG_RESULT([no, $i doesn't work])],[])
@@ -1206,9 +1293,11 @@ then
 	config_warns="$config_warns
 Dynamic NC generation disabled."
     fi
-    AC_DEFINE_UNQUOTED(SKIP16,asm(""),statement for skipping 16 bytes)
+    AC_DEFINE_UNQUOTED(SKIP4,asm(""),statement for skipping 4 bytes)
 else
-    AC_DEFINE_UNQUOTED(SKIP16,asm("$skipcode"),statement for skipping 16 bytes)
+    AC_DEFINE_UNQUOTED(SKIP4,asm("$skipcode"),statement for skipping 4 bytes)
+    SKIPCODE=$skipcode
+    AC_SUBST(SKIPCODE)
 fi
 
 AC_MSG_CHECKING([if and how we can do comments in asm statements])
@@ -1240,7 +1329,7 @@ INSTALLPDF="install-pdf"
 INSTALLHTML="install-html"
 DOPDF=""
 DOHTML=""
-AC_CHECK_PROGS(TEXI2DVI,texi2dvi4a2ps texi2dvi,echo texi2dvi needed )
+AC_CHECK_PROGS(TEXI2DVI,texi2dvi,echo texi2dvi needed )
 case "$TEXI2DVI"
 in
     echo*)
@@ -1275,6 +1364,28 @@ makeinfo not found, INFO and TXT document won't be built."
 	INSTALLTXT="install-txt"
 	;;
 esac
+
+AC_MSG_CHECKING([whether @link works in texinfo files])
+if test -z "$texinfo_link"; then
+    texinfo_link=false
+    cat <<_ACEOF >conftest.texi
+\input texinfo   @c -*-texinfo-*-
+
+@title Sample Title
+
+@link{gforth-experimental--atomic-store-fetch,atomic!@@}
+@anchor{gforth-experimental--atomic-store-fetch}@code{atomic!@@}
+
+@bye
+_ACEOF
+    if $MAKEINFO --html -o /dev/null conftest.texi; then
+        texinfo_link=true
+    fi
+    rm -f conftest.texi
+fi
+AC_MSG_RESULT($texinfo_link)
+AC_SUBST(texinfo_link)
+
 AC_CHECK_PROGS(TEXI2HTML,texi2html,echo texi2html needed )
 case "$TEXI2HTML"
 in
@@ -1312,24 +1423,24 @@ in
 	;;
 esac
 
-if test x$ac_cv_makeinfo_has_css_ref == xyes
+if test x$ac_cv_makeinfo_has_css_ref = xyes
 then
     MAKEINFOREF='--css-ref=$(GFORTH_CSS)'
 else
-    if test x$ac_cv_makeinfo_has_css_include == xyes
+    if test x$ac_cv_makeinfo_has_css_include = xyes
     then
 	MAKEINFOREF='--css-include=$(srcdir)/$(GFORTH_CSS)'
     fi
 fi
 AC_SUBST(MAKEINFOREF)
 
-if test "x$RECODE" == xrecode; then
+if test "x$RECODE" = xrecode; then
    RECODE_ARGS=l1..
 else
    RECODE_ARGS="-f LATIN1"
 fi
 AC_SUBST(RECODE_ARGS)
-if test x$TIMEOUT == xtimeout; then
+if test x$TIMEOUT = xtimeout; then
    TIMEOUT_ARGS=60s
 fi
 AC_SUBST(TIMEOUT_ARGS)
@@ -1407,19 +1518,18 @@ AC_SUBST(libbench)
 AC_SUBST(LIB_VERSION)
 
 #check for libffi 2.x
+LIBFFIFLAG="false"
 AC_CHECK_HEADER(ffi.h,FFI_H_NAME=ffi.h,)
 if test -z "$FFI_H_NAME"; then
   AC_CHECK_HEADER(ffi/ffi.h,FFI_H_NAME=ffi/ffi.h,)
 fi
 AC_SUBST(FFI_H_NAME)
-AC_CHECK_LIB(ffi,ffi_call,LIBS="$LIBS")
-if test -n "$FFI_H_NAME" -a $ac_cv_lib_ffi_ffi_call = yes
-then
-  LIBFFIFLAG="true"
-  LIBCC_BUILD_SRC="$LIBCC_BUILD_SRC unix/libffi.fs"
-else
-  LIBFFIFLAG="false"
+if test ! -z "$FFI_H_NAME"; then
+   AC_CHECK_LIB(ffi,ffi_prep_closure,LIBS="$LIBS"
+LIBFFIFLAG="true"
+LIBCC_BUILD_SRC="$LIBCC_BUILD_SRC unix/libffi.fs")
 fi
+
 #check for ffcall libraries
 #unfortunately, these four calls are separated out into a library each.
 AC_CHECK_LIB(avcall,__builtin_avcall,LIBS="$LIBS")
@@ -1566,12 +1676,22 @@ AC_SUBST(include_fi)
 
 AC_ARG_PROGRAM
 
-# Find installed Gforth
+# Find minimal viable installed Gforth
+test -z "$MINVIABLE" && MINVIABLE=7000
 AC_MSG_CHECKING([for gforth])
 if test -z "$GFORTH"
 then
     GFORTH="`cd / && command -v gforth`"
-    (cd / && "$GFORTH" -e bye >/dev/null 2>/dev/null) || GFORTH=""
+    if test ! -z "$GFORTH"
+    then
+	(cd / && "$GFORTH" -e bye >/dev/null 2>/dev/null) || GFORTH=""
+	if test ! -z "$GFORTH"
+	then
+	    OLDVERSION=`$GFORTH --version 2>&1 | cut -f2 -d' ' | cut -f1 -d_ | tr . ' '`
+	    # Shells are bad at comparing versions
+	    test `$GFORTH -e "$OLDVERSION >r >r 1000 * r> + 1000 * r> + . bye"` -ge "$MINVIABLE" || GFORTH=""
+        fi
+    fi
 fi
 if test -z "$GFORTH"; then
   PREFORTH='echo "You need to configure with a gforth in \$PATH to build this part" >&2 && false'
@@ -1660,10 +1780,14 @@ fi
 
 if test x$MINOS2_LIBS = xyes; then
    if test x$has_swig = xyes || test -f $srcdir/unix/x-fsi.c; then
-      AC_CHECK_HEADER(X11/X.h, SWIGMODULES="$SWIGMODULES x.fs"
-		      SWIGLIBS="$SWIGLIBS x.fs"
-		      SWIGDISTFSI="$SWIGDISTFSI x.fs"
-		      , MINOSFLAG=false,)
+      AC_CHECK_HEADER(X11/X.h, AC_CHECK_HEADER(X11/extensions/sync.h,
+      			       SWIGMODULES="$SWIGMODULES x.fs"
+		      	       SWIGLIBS="$SWIGLIBS x.fs"
+		      	       SWIGDISTFSI="$SWIGDISTFSI x.fs"
+		      	       , MINOSFLAG=false,
+#include <X11/X.h>
+#include <X11/Xlib.h>
+), MINOSFLAG=false,)
    fi
 
    if test x$has_swig = xyes || test -f $srcdir/unix/xrandr-fsi.c; then
@@ -1673,7 +1797,7 @@ if test x$MINOS2_LIBS = xyes; then
 		      , MINOSFLAG=false,)
    fi
    
-   if test "$host_os" == "cygwin"
+   if test "$host_os" = "cygwin"
    then
        if test x$has_swig = xyes || test -f $srcdir/unix/gdi32-fsi.c; then
           AC_CHECK_HEADER(w32api/wtypes.h,
@@ -1979,7 +2103,8 @@ wayland protocols not found."
 	    INCLUDE_WAYLAND='include $(srcdir)/Makefile.wayland'
 	    for i in text-input-unstable-v3 xdg-shell \
 	    	xdg-decoration-unstable-v1 primary-selection-unstable-v1 \
-		tablet-unstable-v2 fractional-scale-v1 viewporter
+		tablet-unstable-v2 fractional-scale-v1 viewporter xdg-output-unstable-v1 \
+		xdg-activation-v1 cursor-shape-v1 idle-inhibit-unstable-v1 tearing-control-v1 color-management-v1 color-representation-v1
 	    do
 		if test -f ""`find $WAYLAND_PROTOCOLS_DATADIR -name $i.xml`
 		then
@@ -2104,7 +2229,7 @@ AC_MSG_CHECKING([if $CXX understands -fpermissive])
 CXXFLAGS_1="$CXXFLAGS"
 CXXFLAGS="$CXXFLAGS -fpermissive"
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],[ac_fpermissive=yes],[ac_fpermissive=no])
-test "$ac_fpermissive" == yes || CXXFLAGS="$CXXFLAGS_1"
+test "$ac_fpermissive" = yes || CXXFLAGS="$CXXFLAGS_1"
 AC_MSG_RESULT($ac_fpermissive)
 AC_LANG([C])
 
@@ -2114,12 +2239,12 @@ AC_SUBST(LIBTOOL_CXX)
 # logging helpers
 LOGDIR=logs
 
-AC_CHECK_PROG(LOLCAT_SUCCESS, lolcat, lolcat -i --seed=40, cat)
-AC_CHECK_PROG(LOLCAT_NEUTRAL, lolcat, lolcat -i --seed=87, cat)
-AC_CHECK_PROG(LOLCAT_FAIL, lolcat, lolcat -i --seed=196, cat)
+AC_CHECK_PROG(LOLCAT_SUCCESS, lolcat, lolcat -i --seed=173 -F 0.03, cat)
+AC_CHECK_PROG(LOLCAT_NEUTRAL, lolcat, lolcat -i --seed=15 -F 0.02, cat)
+AC_CHECK_PROG(LOLCAT_FAIL, lolcat, lolcat -i --seed=50 -F 0.02, cat)
 
-AC_CHECK_PROG(COWSAY_SUCCESS, cowsay, cowsay -f tux, echo)
-AC_CHECK_PROG(COWSAY_FAIL, cowsay, cowsay -f mutilated, echo)
+AC_CHECK_PROG(COWSAY_SUCCESS, cowsay, cowsay -f dragon-and-cow -n, cat)
+AC_CHECK_PROG(COWSAY_FAIL, cowsay, cowsay -f dragon -n, cat)
 
 AC_SUBST(LOGDIR)
 AC_SUBST(LOLCAT_SUCCESS)
@@ -2166,6 +2291,8 @@ chmod +x gforthp
 chmod +x debian/rules
 test -f $srcdir/unix/wayland-fsi.c&&touch $srcdir/unix/wayland-fsi.c
 test -d kernel||mkdir kernel
+test -d logs||mkdir logs
+test -d doc/words||mkdir -p doc/words
 test -d test||mkdir test
 test -d wayland||mkdir wayland
 if test $srcdir != "."; then ln -sf $srcdir/gforth.el .; fi
@@ -2186,24 +2313,11 @@ fi
 
 # print warnings summary if exist
 
-AC_CHECK_PROGS(COWSAY, cowsay)
-AC_CHECK_PROGS(LOLCAT, lolcat)
-
 echo
 if test -z "$config_warns"
 then
-   if test -z "$COWSAY" -o -z "$LOLCAT"
-   then
-      echo "*** Config summary: everything fine ***"
-   else
-      cowsay -f dragon-and-cow "*** Config summary: everything fine ***"|lolcat --seed=173 -i -F 0.03
-   fi
+   echo "*** Config summary: everything fine ***"|$COWSAY_SUCCESS|$LOLCAT_SUCCESS
 else
-   if test -z "$COWSAY" -o -z "$LOLCAT"
-   then
-      echo "*** Config summary: Warnings exist ***"
-   else
-      cowsay -f dragon "*** Config summary: Warnings exist ***"|lolcat --seed=50 -i -F 0.02
-   fi
-   echo "$config_warns"
+   echo "*** Config summary: Warnings exist ***
+$config_warns"|$COWSAY_FAIL|$LOLCAT_FAIL
 fi

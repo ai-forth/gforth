@@ -1,7 +1,7 @@
 \ Opus codec for PulseAudio driver
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2020,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -223,6 +223,10 @@ Variable opus-stereo-blocks
     opus-task ?dup-IF  wake  ELSE  opus-block-task  THEN ;
 
 : start-play ( -- )
+    [IFDEF] pa-ready
+	pa-task 0= IF  pulse-init  THEN
+	BEGIN  pa-ready 0= WHILE  1 ms  REPEAT
+    [THEN]
     0 to idx-pos#  0 to play-pos#  opus-go
     [IFDEF] pulse-exec##
 	stream@ ?dup-IF
@@ -311,9 +315,7 @@ Variable opus-stereo-blocks
 
 previous
 
-0 warnings !@
-: bye ( -- )
+:is bye
     opus-task ?dup-IF
 	opus-task kill  0 to opus-task  5 ms
-    THEN  bye ;
-warnings !
+    THEN  defers bye ;

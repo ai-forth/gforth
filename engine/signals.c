@@ -1,7 +1,7 @@
 /* signal handling
 
   Authors: Anton Ertl, Bernd Paysan
-  Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2018,2019,2020,2021,2023 Free Software Foundation, Inc.
+  Copyright (C) 1995,1996,1997,1998,2000,2003,2006,2007,2011,2012,2013,2014,2015,2016,2018,2019,2020,2021,2023,2024 Free Software Foundation, Inc.
 
   This file is part of Gforth.
 
@@ -173,7 +173,7 @@ signal_throw(int sig)
 static void
 sigaction_throw(int sig, siginfo_t *info, void *_)
 {
-  debugp(stderr,"\nsigaction_throw %d %p %p\n", sig, info, _);
+  debugp(stderr,"\nsigaction_throw %d %p %p @%p\n", sig, info, _, info->si_addr);
   signal_throw(sig);
 }
 
@@ -236,11 +236,13 @@ static void segv_handler(int sig, siginfo_t *info, void *_)
 {
   int code=-9;
   Address addr=info->si_addr;
+  ImageHeader *section=gforth_UP->current_section;
+  UCell section_end=(UCell)(section->base + section->dict_size + (pagesize-1)) & -pagesize;
 
   SIGPP(sig);
   debugp(stderr,"\nsegv_handler %d %p %p @%p\n", sig, info, _, addr);
 
-  if ((UCell)(addr - dictguard) < pagesize)
+  if ((UCell)(addr - section_end) < pagesize)
     code=-8;
   else if (JUSTUNDER(addr, NEXTPAGE3(gforth_UP)))
     code=-3;

@@ -1,7 +1,7 @@
 \ Load in error strings
 
 \ Authors: Anton Ertl, Bernd Paysan, Neal Crook, Jens Wilke
-\ Copyright (C) 1995,1996,1997,1998,1999,2003,2007,2013,2015,2016,2017,2018,2019,2020,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,1998,1999,2003,2007,2013,2015,2016,2017,2018,2019,2020,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -43,7 +43,7 @@ decimal
 -14 s" Interpreting a compile-only word" rot errstring
 -15 s" Invalid FORGET" rot errstring
 -16 s" Attempt to use zero-length string as a name" rot errstring
--17 s" Pictured numeric ouput string overflow" rot errstring
+-17 s" Pictured numeric output string overflow" rot errstring
 -18 s" Parsed string overflow" rot errstring
 -19 s" Word name too long" rot errstring
 -20 s" Write to a read-only location" rot errstring

@@ -1,7 +1,7 @@
 \ OpenGL terminal
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -25,7 +25,7 @@
 require ../unix/pthread.fs
 require gl-helper.fs
 
-also opengl also [IFDEF] android android [THEN]
+also opengl [IFDEF] android also android also jni  [THEN]
 
 GL_FRAGMENT_SHADER shader: TerminalShader
 #precision
@@ -159,12 +159,13 @@ $8F00 Value gl-default-color \ real default color
     4 lshift error-color-index fg-field c! ;
 : err-bg! ( index -- ) ?default-bg
     4 lshift error-color-index bg-field c! ;
+1e $130 fm/ FValue damp-light
 : bg>clear ( index -- ) $F xor
     $F and sfloats color-matrix +
-    count s>f $FF fm/
-    count s>f $FF fm/
-    count s>f $FF fm/
-    c@    s>f $FF fm/ glClearColor ;
+    count damp-light fm*
+    count damp-light fm*
+    count damp-light fm*
+    c@    damp-light fm* glClearColor ;
 
 : std-bg! ( index -- )  dup bg! dup std-bg ! bg>clear ;
 Black White white? [IF] swap [THEN] fg! bg!
@@ -190,26 +191,47 @@ Variable scroll-y
 FVariable scroll-dest
 FVariable scroll-source
 FVariable scroll-time
+[IFDEF] screen-xywh@     \ For Android
+    2Variable screen-xy  \ top left position
+    2Variable screen-wh' \ actually visible width and height
+[THEN]
 
 80 Value hcols
 48 Value vcols
 
 : form-chooser ( -- )
-    screen-orientation 1 and  IF  hcols  ELSE  vcols  THEN
-    dup dpy-h @ dpy-w @ 2* */ swap gl-wh 2! ;
+    screen-orientation 1 and  IF  hcols  ELSE  vcols  THEN  dup
+    [ [defined] screen-wh' [IFDEF] SDK_INT SDK_INT #35 >= and [THEN] ]
+    [IF] screen-wh' 2@ swap
+	2dup d0= IF  2drop dpy-h @ dpy-w @  THEN
+    [ELSE] dpy-h @ dpy-w @ [THEN]
+    2* */ swap gl-wh 2! ;
 
 : show-rows ( -- n ) videorows scroll-y @ - rows 1+ min ;
 $40 Value minpow2#
 : nextpow2 ( n -- n' )
     minpow2#  BEGIN  2dup u>  WHILE 2*  REPEAT  nip ;
 
-: >rectangle ( -- )
-    show-rows s>f rows fm/ -2e f* 1e f+
-    >v
-    -1e fover >xy n> v+
-    -1e 1e >xy n> v+
-    1e  1e >xy n> v+
-    1e  fswap >xy n> v+ o> ;
+[IFDEF] android SDK_INT #35 >= [ELSE] false [THEN]
+[IF]
+    : >rectangle ( -- )
+	show-rows s>f rows fm/ -2e f* 1e f+
+	screen-size@ screen-xywh@ { sw sh x y w h }
+	y h + sh 2/ tuck - swap fm*/
+	>v
+	-1e fover >xy n> v+
+	-1e 1e sh 2/ y - sh 2/ fm*/ >xy n> v+
+	1e  1e sh 2/ y - sh 2/ fm*/ >xy n> v+
+	1e  fswap >xy n> v+ o> ;
+[ELSE]
+    : >rectangle ( -- )
+	show-rows s>f rows fm/ -2e f* 1e f+
+	>v
+	-1e fover >xy n> v+
+	-1e 1e >xy n> v+
+	1e  1e >xy n> v+
+	1e  fswap >xy n> v+ o> ;
+[THEN]
 
 : >texcoords ( -- )
     cols s>f videocols fm/  show-rows dup s>f nextpow2 dup fm/
@@ -235,10 +257,11 @@ $40 Value minpow2#
 	dup lle I l!
     [ 1 sfloats ]L +LOOP drop ;
 : resize-screen ( -- )
+    gl-wh @ { height }
     gl-xy @ 1+ actualrows max to actualrows
-    gl-wh @ videocols u> gl-xy @ videorows u>= or IF
+    height videocols u> gl-xy @ videorows u>= or IF
 	videorows videocols * sfloats >r
-	gl-wh @ nextpow2 videocols max to videocols
+	height nextpow2 videocols max to videocols
 	gl-xy @ 1+ nextpow2 videorows max to videorows
 	videomem videocols videorows * sfloats dup >r
 	videorows sfloats + resize throw
@@ -277,7 +300,7 @@ Variable gl-emit-buf
 : gl-cr ( -- )
     gl-lineend @ 0= IF
 	gl-xy @ 1+ 0 swap gl-xy 2! THEN
-    resize-screen  +sync  out off ;
+    resize-screen  +sync +show  out off ;
 
 xc-vector @ set-encoding-utf-8
 : xchar>glascii ( xchar -- 0..7F )
@@ -355,7 +378,7 @@ xc-vector !
 ${GFORTH_IGNLIB} s" true" str= 0= [IF]
     Sema gl-sema
 [ELSE]
-    Create gl-sema
+    Create gl-sema  1 pthread-mutexes allot
 [THEN]
 
 : gl-emit ( char -- ) [: color-index @ (gl-emit) ;] gl-sema c-section ;
@@ -397,6 +420,8 @@ ${GFORTH_IGNLIB} s" true" str= 0= [IF]
 			gl-lineend-save @ gl-lineend !  endof \ restore curpos
 		endcase
 	    endof
+	    'A' of  negate 0 swap gl-at-deltaxy  endof
+	    'B' of         0 swap gl-at-deltaxy  endof
 	    'E' of         gl-xy @ + 0 swap (gl-atxy)  endof
 	    'F' of  negate gl-xy @ + 0 swap (gl-atxy)  endof
 	    'J' of  >r
@@ -422,7 +447,7 @@ ${GFORTH_IGNLIB} s" true" str= 0= [IF]
     scroll-y @ s>f y-pos sf@ f2/ rows fm* f+ scroll-source f!
     scroll-dest f!  ftime scroll-time f! ;
 
-: scroll-slide ( -- )  scroll-dest f@ scroll-source f@ f= ?EXIT
+: scroll-slide ( -- )  -sync scroll-dest f@ scroll-source f@ f= ?EXIT
     >scroll-pos fdup 1e f= IF  scroll-dest f@ scroll-source f!  THEN
     fdup scroll-dest f@ f* 1e frot f- scroll-source f@ f* f+ screen-scroll ;
 
@@ -449,7 +474,6 @@ ${GFORTH_IGNLIB} s" true" str= 0= [IF]
 [IFUNDEF] win : win app window @ ; [THEN]
 
 [IFDEF] android
-    also jni
     JValue metrics \ screen metrics
     
     : >metrics ( -- )
@@ -477,7 +501,7 @@ ${GFORTH_IGNLIB} s" true" str= 0= [IF]
 	    screen-pwh
 	    dpy-h @ rr-out0 XRROutputInfo-mm_height l@ s>f fm*/
 	    dpy-w @ rr-out0 XRROutputInfo-mm_width  l@ s>f fm*/ fswap ;
-	previous
+	previous previous
     [ELSE]
 	: screen-pwh ( -- w h )
 	    dpy-wh 2@ ;
@@ -485,9 +509,8 @@ ${GFORTH_IGNLIB} s" true" str= 0= [IF]
 	    wl-metrics 2@ swap s>f s>f ;
     [THEN]
 [THEN]
-previous
 
-141e FValue default-diag \ Galaxy Note II is 80x48
+5.5555e 25.4e f* FValue default-diag \ 5.5555" inches as default
 1e FValue default-scale
 
 : screen-diag ( -- rdiag )
@@ -497,29 +520,24 @@ previous
     \ smart scaler, scales using square root relation
     level# @ 0= IF
 	default-diag screen-diag f/ fsqrt default-scale f*
-	1/f 80 fdup fm* f>s to hcols 48 fm* f>s to vcols
+	1/f #80 fdup fm* f>s to hcols #48 fm* f>s to vcols
 	resize-screen config-changed screen->gl  THEN ;
 
 Defer scale-me ' terminal-scale-me is scale-me
 
-[IFDEF] screen-xywh@
-    2Variable screen-xy
-[THEN]
-
 : config-changer ( -- )
 [IFDEF] screen-xywh@
-    screen-xywh@ 2drop screen-xy 2!
+    screen-xywh@ screen-wh' 2! screen-xy 2!
 [THEN]
     getwh  >screen-orientation  scale-me
     form-chooser ;
 : ?config-changer ( -- )
     ?config IF
-	gl-wh 2@ 2>r config-changer
-	gl-wh 2@ 2r> d<> IF
-	    winch? on +resize +sync
-	ELSE  +sync  THEN
-	-config
+	gl-wh 2@ 2>r config-changer gl-wh 2@ 2r> d<>
+	IF   winch? on +resize  THEN  +sync -config
     THEN ;
+
+Variable render#
 
 : screen-sync ( -- )
     rendering @ -2 > ?EXIT \ don't render if paused
@@ -601,7 +619,7 @@ default-out op-vector !
 : >screen ( -- )
     ctx 0= IF  window-init  [IFDEF] map-win map-win [THEN] config-changer  THEN
     err>screen op-vector @ debug-vector !  out>screen
-    white? IF  >light  ELSE  >dark  THEN ;
+    white? IF  >light  ELSE  >dark  THEN  config-changed ;
 
 \ initialize
 
@@ -624,7 +642,7 @@ default-out op-vector !
 
 \ window-init
 
-previous previous \ remove opengl from search order
+previous [IFDEF] android previous previous [THEN] \ remove opengl from search order
 
 \ print system and sh outputs on gl terminal
 

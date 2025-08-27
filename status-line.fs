@@ -1,7 +1,7 @@
 \ status line, inspired by seedForth
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -20,12 +20,17 @@
 
 0 Value status-offset
 
+Create status-colors
+' status-color ,
+' compile-color ,
+' postpone-color ,
+' error-color 7 0 [DO] dup , [LOOP] drop
+DOES> state @ abs translator-max-offset# umin cells + perform ;
+
 : redraw-status ( addr u -- )
     save-cursor-position
     0 rows 1 - at-xy
-    state @ IF  compile-color  ELSE  status-color  THEN
-    type
-    default-color
+    status-colors type default-color
     restore-cursor-position ;
 : .unstatus-line ( -- )
     0 erase-display

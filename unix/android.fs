@@ -1,7 +1,7 @@
 \ Android based stuff, including wrapper to androidlib.fs
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -39,7 +39,7 @@ get-current also android definitions
 Defer akey
 
 also c-lib
-:noname open-path-lib drop ; is prefetch-lib
+:is prefetch-lib open-path-lib drop ;
 previous
 
 begin-structure app_input_state
@@ -184,7 +184,7 @@ DOES> ( akey -- addr u )
 
 Variable level#
 Defer aback
-:noname  -1 level# +!  level# @ 0< IF  bye  THEN ; IS aback
+:is aback  -1 level# +!  level# @ 0< IF  bye  THEN ;
 
 also jni
 
@@ -208,7 +208,7 @@ host? [IF] newRect to screenrect [THEN]
 : screen-xywh@ ( -- x y w h )
     clazz >o getWindow >o getDecorView >o
     screenrect getWindowVisibleDisplayFrame ref> ref> o>
-    screenrect >o left top right bottom o> ;
+    screenrect >o left top right third - bottom third - o> ;
 
 $80 Constant FLAG_KEEP_SCREEN_ON
 
@@ -235,8 +235,6 @@ false value wake-lock \ doesn't work, why?
 
 \ event handling
 
-Create direct-key# 0 c,
-
 : meta@ ( -- char ) \ minos2
     \G return meta in vt100 form
     0
@@ -244,7 +242,7 @@ Create direct-key# 0 c,
     meta-key# @ AMETA_ALT_ON   and 0<> 2 and  or
     meta-key# @ AMETA_CTRL_ON  and 0<> 4 and  or ;
 
-: +meta ( addr u -- addr' u' ) \ minos2
+: +meta ( addr u meta -- addr' u' ) \ minos2
     \G insert meta information
     >r over c@ #esc <> IF  rdrop  EXIT  THEN
     r> dup 0= IF  drop  EXIT  THEN  '1' + \ no meta, don't insert
@@ -255,20 +253,20 @@ Create direct-key# 0 c,
 	ELSE  type  THEN
     r> r> emit emit ;] $tmp ;
 
-: keycode>keys ( keycode -- addr u )
+: keycode>keys ( keycode -- )
     dup AKEYCODE_A AKEYCODE_Z 1+ within IF
 	AKEYCODE_A -  ctrl A
 	'A' 'a' meta-key# @ AMETA_SHIFT_ON and select
 	meta-key# @ AMETA_CTRL_ON and select
-	+ direct-key# c! direct-key# 1 EXIT
+	+ inskey EXIT
     THEN
     dup AKEYCODE_0 AKEYCODE_9 1+ within IF
-	AKEYCODE_0 - '0' + direct-key# c! direct-key# 1 EXIT
+	AKEYCODE_0 - '0' + inskey EXIT
     THEN
     case
-	AKEYCODE_MENU of  togglekb s" "  endof
-	AKEYCODE_BACK of  aback    s" "  endof
-	akey>ekey meta@ +meta 0
+	AKEYCODE_MENU of  togglekb  endof
+	AKEYCODE_BACK of  aback     endof
+	akey>ekey meta@ +meta inskeys 0
     endcase ;
 
 16 Value looper-to#
@@ -281,7 +279,8 @@ variable looperfds pollfd 8 * allot
     1 looperfds +! ;
     
 : ?poll-file ( -- )
-    poll-file 0= IF  app ke-fd0 l@ "r" fdopen to poll-file  THEN ;
+    poll-file 0= IF  app ke-fd0 l@ "r" fdopen
+	dup 0= ?errno-throw dup nobuffer to poll-file  THEN ;
 : looper-init ( -- )  looperfds off
     app ke-fd0 l@    POLLIN +fds
     epiper @ fileno  POLLIN +fds
@@ -308,7 +307,7 @@ Defer ?looper-timeouts ' noop is ?looper-timeouts
 
 : #looper  looper-init
     BEGIN  ?looper-timeouts  0 poll? 0=  UNTIL  poll? drop ;
-:noname ( -- ) looper-to# #looper ; is >looper
+:is >looper ( -- ) looper-to# #looper ;
 : ?looper  BEGIN  >looper  app window @ UNTIL ;
 
 \ : >looper  BEGIN  0 poll_looper 0<  UNTIL looper-to# poll_looper drop ;
@@ -316,21 +315,17 @@ Defer ?looper-timeouts ' noop is ?looper-timeouts
 
 Defer screen-ops ' noop IS screen-ops
 
-:noname  0 poll? drop
-    key-buffer $@len 0<>  infile-id ?dup-IF  key?-file  or  THEN
-    screen-ops
-; IS key?
+:is key? ( -- flag ) 0 poll? drop screen-ops
+    key-buffer $@len 0<>  infile-id ?dup-IF  key?-file  or  THEN ;
 
 : android-key-ior ( -- key / ior )
     ?keyboard IF  showkb -keyboard  THEN
     +show
     BEGIN  >looper key? winch? @ or  UNTIL
-    winch? @ IF  EINTR  ELSE
-	infile-id IF
-	    defers key-ior dup #cr = key? and
-	    IF  key-ior ?dup-IF inskey THEN THEN
-	ELSE  inskey@  THEN
-    THEN ;
+    winch? @ IF  EINTR  EXIT  THEN
+    key-buffer $@len IF  inskey@  EXIT  THEN
+    infile-id ?dup-IF  key?-file IF  infile-id (key-file)  EXIT  THEN  THEN
+    EINTR ;
 ' android-key-ior IS key-ior
 
 : android-deadline ( dtime -- )
@@ -341,13 +336,13 @@ Defer screen-ops ' noop IS screen-ops
     defers everyline restartkb ;
 ' android-everyline is everyline
 
-:noname [: ." app window " app window @ h. cr ;] $err ; IS window-init
+:is window-init [: ." app window " app window @ h. cr ;] $err ;
 : window-init, ( xt -- )
     >r :noname action-of window-init compile, r@ compile,
     postpone ; is window-init
     ctx IF  r@ execute  THEN  rdrop ;
 screen-ops     ' noop IS screen-ops
-:noname ( -- ) +sync +config ; is config-changed
+:is config-changed ( -- ) +sync +config ;
 
 Variable rendering  -2 rendering ! \ -2: on, -1: pause, 0: stop
 
@@ -357,15 +352,17 @@ Variable rendering  -2 rendering ! \ -2: on, -1: pause, 0: stop
 : android-characters ( string -- )  jstring>sstring
     nostring 0 skip inskeys jfree ;
 Defer android-commit
-:noname     ( string/0 -- ) ?dup-0=-IF  insstring  ELSE
+:is android-commit     ( string/0 -- )
+    ctrl L inskey
+    ?dup-0=-IF  insstring  ELSE
 	jstring>sstring 0 skip inskeys jfree setstring$ $free
-    THEN ; is android-commit
+    THEN ;
 Defer android-setstring
+:is android-setstring  ( string -- ) jstring>sstring setstring$ $! jfree
+    ctrl L inskey ;
 Defer android-inskey ' inskey is android-inskey
-:noname  ( string -- ) jstring>sstring setstring$ $! jfree
-    ctrl L android-inskey ; is android-setstring
 : android-unicode    ( uchar -- )   >xstring inskeys ;
-: android-keycode    ( keycode -- ) keycode>keys inskeys ;
+: android-keycode    ( keycode -- ) keycode>keys ;
 
 : xcs ( addr u -- n )
     \G number of xchars in a string
@@ -437,9 +434,9 @@ Variable new-touch
     o> ;
 
 Defer android-location ( location -- )
-:noname to location ; IS android-location
+:is android-location to location ;
 Defer android-sensor ( sensor -- )
-:noname to sensor ; IS android-sensor
+:is android-sensor to sensor ;
 
 \ stubs, "is recurse" assigns to last defined word
 
@@ -466,35 +463,42 @@ Defer clipboard-changed ( 0 -- ) ' drop is recurse
 
 Defer android-active
 
-:noname ( flag -- )
+:is android-active ( flag -- )
     \ >stderr ." active: " dup . cr
     dup rendering !  IF
 	16 to looper-to#
 	rendering @ -2 <= IF  reload-textures
 	    +show +sync +config +textures screen-ops  THEN
-    ELSE  16000 to looper-to#  THEN ; is android-active
+    ELSE  16000 to looper-to#  THEN ;
 
 Defer android-alarm ( 0 -- ) ' drop is android-alarm
 Defer android-network ( metered -- )
-( :noname drop .network cr ; ) ' drop is android-network
+( :is android-context-menu drop .network cr ; ) ' drop is android-network
 Defer android-notification ( intent -- )
 ( :noname drop ." Got intent" cr ; ) ' drop is android-notification
 Defer android-context-menu ( id -- )
-:noname ( n -- )
+:is android-context-menu ( n -- )
     case
 	$0102001f of  "\e[S"  inskeys endof \ select all
 	$01020020 of  ctrl X  inskey  endof \ cut
 	$01020021 of  ctrl C  inskey  endof \ copy
 	$01020022 of  ctrl V  inskey  endof \ paste
 	$0102002c of  ctrl A  inskey  endof \ home
-    endcase ; is android-context-menu
+    endcase ;
 Defer android-permission# ( n -- )
-:noname to android-perm# ; is android-permission#
+:is android-permission# to android-perm# ;
 Defer android-permission-result ( jstring -- )
 Variable android-permissions[]
-:noname ( jstring -- )
+:is android-permission-result ( jstring -- )
     jstring>sstring android-permissions[] $+[]! jfree ;
-is android-permission-result
+Defer android-insets ' noop is android-insets
+SDK_INT #30 >= [IF]
+    JValue ime-insets
+    JValue bar-insets
+    :is android-insets ( inset -- )
+	>o ime getInsets to ime-insets systemBars getInsets to bar-insets
+	gref> winch? on ;
+[THEN]
 
 Create aevents
 (  0 ) ' android-key ,
@@ -524,11 +528,12 @@ Create aevents
 ( 24 ) ' android-context-menu ,
 ( 25 ) ' android-permission# ,
 ( 26 ) ' android-permission-result ,
+( 27 ) ' android-insets ,
 here aevents - cell/
 ' drop ,
 Constant max-event#
 
-:noname ( event type -- )
-    max-event# umin cells aevents + perform ; is akey
+:is akey ( event type -- )
+    max-event# umin cells aevents + perform ;
 
 previous previous set-current

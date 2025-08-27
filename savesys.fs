@@ -1,7 +1,7 @@
 \ image dump                                           15nov94py
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 1995,1997,2003,2006,2007,2010,2011,2012,2016,2017,2018,2019,2021,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,2003,2006,2007,2010,2011,2012,2016,2017,2018,2019,2021,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -66,7 +66,14 @@ is 'clean-maintask
 : dump-fi ( c-addr u -- )
     prepare-for-dump
     w/o bin create-file throw >r
-    preamble-start here over - r@ write-file throw
+    s" GFORTH_PREAMBLE" getenv 2dup d0= IF  2drop
+	preamble-start forthstart 8 - over - r@ write-file throw
+    ELSE
+	tuck r@ write-file throw
+	#lf r@ emit-file throw 1+ dup dfaligned swap -
+	0 ?DO  bl j emit-file throw  LOOP
+    THEN
+    forthstart 8 - here over - r@ write-file throw
     r@ dump-sections
     r> close-file throw ;
 

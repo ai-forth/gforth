@@ -1,7 +1,7 @@
 \ High level floating point                            14jan94py
 
 \ Authors: Bernd Paysan, Anton Ertl, Neal Crook, Jens Wilke, Lennart Benschop
-\ Copyright (C) 1995,1997,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1997,2003,2004,2005,2006,2007,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -64,22 +64,29 @@
     \G @i{f} in the space.
     1 floats small-allot f! ;
 
-: flit, ( r -- )
+: flit, ( r -- ) \ gforth
+    \G This is a non-immediate variant of @word{fliteral}@*
+    \G Execution semantics: Compile the following semantis:@*
+    \G Compiled semantics: ( @i{ -- r} ).
     [ cell 4 = ] [IF]
 	here cell+ dup faligned <>
 	IF  postpone flit1 0 ,  ELSE  postpone flit0  THEN
     [ELSE]
-	postpone flit
+        postpone flit
     [THEN]
-	f, ;
+    f, ;
+
 : FLiteral ( compilation r -- ; run-time -- r ) \ floating f-literal
-    \G Compile appropriate code such that, at run-time, @i{r} is placed
-    \G on the (floating-point) stack. Interpretation semantics are undefined.
+    \G Compilation semantics: ( @i{r --} ) compile the run-time semantics.@*
+    \G Run-time Semantics: ( @i{ -- r} ).@*
+    \G Interpretation semantics: not defined in the standard.
     flit, ;  immediate
 
 : opt-fcon ( xt -- )  >body f@ postpone FLiteral ;
 
 : fconstant  ( r "name" -- ) \ floating f-constant
+    \G Define @i{name}.@*
+    \G @i{name} execution: @i{( -- r )}
     Create f,
     ['] f@ set-does>
     ['] opt-fcon set-optimizer ;
@@ -95,9 +102,12 @@ create dummy-fvalue
 ' fvalue-to set-to
 
 : fvalue ( r "name" -- ) \ floating-ext f-value
-    \g Define @i{name} @code{( -- r1 )} where @i{r1} initially is
-    \g @i{r}; this value can be changed with @code{to @i{name}} or
-    \g @code{->@i{name}}.
+    \g Define @i{name} with the initial value @i{r} @*
+    \g @i{name} execution: @i{( -- r2 )} push the current value of @i{name}.@*
+    \g @code{to @i{name}} run-time: @i{( r3 -- )} change the value of
+    \g @i{name} to @i{r3}.@*
+    \g @code{+to @i{name}} run-time: @i{( r4 -- )} increment the value of
+    \g @i{name} by @i{r4}
     ['] dummy-fvalue create-from reveal f, ;
 
 : fdepth ( -- +n ) \ floating f-depth
@@ -194,7 +204,7 @@ si-prefixes count 2/ + Constant zero-exp
 	2drop false
     THEN  rdrop ;
 
-: fp. ( r -- ) \ floating-ext f-e-dot
+: fp. ( r -- ) \ floating-ext f-p-dot
 \G Display @i{r} using SI prefix notation (with exponent dividable
 \G by 3, converted into SI prefixes if available), followed by a space.
     f$ 1- s>d 3 fm/mod 3 * >r 1+ >r
@@ -204,11 +214,12 @@ si-prefixes count 2/ + Constant zero-exp
 	zero-exp r> - c@ emit space
     ELSE  'E emit r> .  THEN ;
 
-: >postponer ( xt1 xt2 -- xt1 xt3 ) >r dup >r
+: >postponer ( xt1 xt2 -- xt1 xt3 )
+    >r dup >r
     :noname r> r> compile, lit, postpone compile, postpone ; ;
 
-' noop ' fliteral ' fliteral >postponer
-translate: translate-float ( r -- | r ) \ gforth-experimental
+' noop ' fliteral dup >postponer
+translate: translate-float ( r -- ... ) \ gforth-experimental
 \G A translator for a float number.
 ' translate-float Constant rectype-float
 
@@ -219,6 +230,8 @@ translate: translate-float ( r -- | r ) \ gforth-experimental
 ' rec-float ' forth-recognize defer@ >back
 
 : fvariable ( "name" -- ) \ floating f-variable
+    \g Define @i{name} and reserve a float at @i{f-addr}.@* @i{name}
+    \g execution: @code{( -- f-addr )}.
     Create 0.0E0 f, ;
     \ does> ( -- f-addr )
 
@@ -241,12 +254,14 @@ translate: translate-float ( r -- | r ) \ gforth-experimental
 0.e0 1/f fconstant infinity ( -- r ) \ gforth
 \G floating point infinity
 synonym inf infinity ( -- r ) \ gforth
-\G synonym of @code{infinity} for copy-paste from @code{...}, @xref{Examining data}.
+\G Synonym of @code{infinity} to allow copying and pasting from the
+\G output of @code{...}, @xref{Examining data}.
 
 infinity fnegate fconstant -infinity ( -- r ) \ gforth
 \G floating point -infinity
 synonym -inf -infinity ( -- r ) \ gforth
-\G synonym of @code{-infinity} for copy-paste from @code{...}, @xref{Examining data}.
+\G Synonym of @code{-infinity} to allow copying and pasting from the
+\G output of @code{...}, @xref{Examining data}.
 
 0.e0 0.e0 f/ fconstant NaN ( -- r ) \ gforth
 \G floating point Not a Number

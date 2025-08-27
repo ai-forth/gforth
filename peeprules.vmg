@@ -1,7 +1,7 @@
 \ Gforth superinstructions and stack caching replicas
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2003,2004,2005,2007,2010,2012,2013,2015,2016,2019,2020,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2003,2004,2005,2007,2010,2012,2013,2015,2016,2019,2020,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -170,6 +170,8 @@ csswaplstore = >r l>< r> l!
 \E S1 S0 state-prim under+
 \E prim-states i                    \ 502908
 \E prim-states +!                   \ 448925
+\E prim-states !@
+\E prim-states +!@
 \E S1 S1 state-offset-prim branch   \ 409561
 \E S1 S1 state-offset-prim (loop)   \ 379646
 \ \E prim-states lp!                  \ 326743
@@ -259,6 +261,8 @@ forlocal(`15',`\E prim-states @o%i')
 \E prim-states within               \ 51075
 \E prim-states 1-                   \ 47441
 \E branch-states execute              \ 46674
+\ if you add more variants of execute-;s, also add them to ip_dead (main.c)
+\E S2 S1 state-prim execute-;s
 \E prim-states lp-                  \ 45385
 \E branch-states perform              \ 38756
 \E prim-states xor                  \ 35599

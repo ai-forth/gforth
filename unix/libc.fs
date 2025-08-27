@@ -1,7 +1,7 @@
 \ useful libc functions
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -26,12 +26,15 @@ c-library libc
     \c #include <fcntl.h>
     \c #include <locale.h>
     \c #include <sys/stat.h>
-    \c #include <sys/ioctl.h>
-    \c #if HAVE_GETPAGESIZE
-    \c #elif HAVE_SYSCONF && defined(_SC_PAGESIZE)
-    \c #define getpagesize() sysconf(_SC_PAGESIZE)
-    \c #elif PAGESIZE
-    \c #define getpagesize() PAGESIZE
+    \c #ifdef __APPLE__
+    \c # include <sys/random.h>
+    \c #endif
+    \c #ifndef FIONREAD
+    \c # if defined(__sun)
+    \c #  include <sys/filio.h>
+    \c # else
+    \c #  include <sys/ioctl.h>
+    \c # endif
     \c #endif
     \c #define set_errno(n) (errno=(n))
     \c extern char ** environ;
@@ -39,7 +42,6 @@ c-library libc
     c-value FIONREAD FIONREAD -- n ( -- value )
     c-value FIONBIO FIONBIO -- n ( -- value )
     c-function ->errno set_errno n -- void ( n -- )
-    c-function getpagesize getpagesize -- n ( -- size )
     c-function fileno fileno a{(FILE*)} -- n ( file* -- fd )
     c-function poll poll a n n -- n ( fds nfds timeout -- r )
     e? os-type s" linux-gnu" string-prefix?
@@ -51,11 +53,17 @@ c-library libc
 	c-function epoll_create epoll_create n -- n ( n -- epfd )
 	c-function epoll_ctl epoll_ctl n n n a -- n ( epfd op fd event -- r )
 	c-function epoll_wait epoll_wait n a n n -- n ( epfd events maxevs timeout -- r )
+    [THEN]
+    e? os-type s" linux-gnu" string-prefix?
+    e? os-type s" linux-musl" string-prefix? or
+    e? os-type s" darwin" string-prefix? or [IF]
 	\c #if HAVE_SPAWN_H
 	\c # include <spawn.h>
 	\c #endif
 	c-function posix_spawnp posix_spawnp a s a a a a -- n ( *pid path addr actions attrp argv envp -- ret )
     [THEN]
+    \c #define nobuffer(stream) setvbuf(stream, NULL, _IONBF, 0);
+    c-function nobuffer nobuffer a -- void ( file -- )
     c-function fdopen fdopen n s -- a ( fd fileattr len -- file )
     c-function freopen freopen s s a -- a ( path mode file -- file )
     c-function fcntl fcntl n n n -- n ( fd n1 n2 -- ior )
@@ -80,7 +88,6 @@ c-library libc
     c-function getcwd getcwd a u -- a ( c-addr u -- c-addr )
     c-function strlen strlen a -- n
     getentropy? [IF]
-	\c #include <sys/random.h>
 	c-function getentropy getentropy a n -- n ( buffer len -- n )
     [THEN]
     getrandom? [IF]
@@ -91,8 +98,6 @@ c-library libc
     c-function unsetenv unsetenv s -- n ( name u -- n )
     c-value environ environ -- a ( -- env )
 end-c-library
-
-host? [IF] getpagesize [ELSE] $1000 [THEN] Value pagesize
 
 begin-structure pollfd
     lfield: fd
@@ -128,11 +133,11 @@ $010 Constant POLLHUP
 : errno-throw ( errno -- ) \ gforth-internal
     \G throws code from a C error code on the stack (if not 0)
     ?dup-IF  -512 swap - throw  THEN ;
-: ?errno-throw ( f -- ) \ gforth
+: ?errno-throw ( f -- ) \ gforth question-errno-throw
     \G If @i{f}<>0, throws an error code based on the value of @code{errno}.
     IF  errno errno-throw  THEN ;
 
-: ?ior ( x -- ) \ gforth
+: ?ior ( x -- ) \ gforth question-i-o-r
     \G If @i{f}=-1, throws an error code based on the value of @code{errno}.
     -1 = ?errno-throw ;
 
@@ -144,7 +149,7 @@ $010 Constant POLLHUP
 [then]
 
 : fd>file ( fd -- fid )
-    s" w+" fdopen dup 0= ?errno-throw ;
+    s" w+" fdopen dup 0= ?errno-throw dup nobuffer ;
 
 host? [IF] (getpid) [ELSE] 0 [THEN] Value getpid
 
@@ -166,13 +171,12 @@ e? os-type s" linux-musl" string-prefix? or [IF]
 
 :noname ['] execute is int-execute 0 to getpid defers 'image ; is 'image
 
-:noname
+:is 'cold
     defers 'cold
     host? IF
 	['] int-errno-exec is int-execute
-	getpagesize to pagesize
 	(getpid) to getpid
-    THEN ; is 'cold
+    THEN ;
 
 to-table: errno-table ->errno
 ' drop errno-table to-class: to-errno

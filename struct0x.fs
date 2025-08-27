@@ -1,7 +1,7 @@
 \ implementation of Forth 200x structures
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2007,2012,2014,2015,2016,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2007,2012,2014,2015,2016,2018,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -45,14 +45,14 @@ standard:field
 : extend-structure ( n "name" -- struct-sys n ) \ gforth
     \g Start a new structure @i{name} as extension of an existing
     \g structure with size @i{n}.
-    standard:field >r 0 value latestnt >body r> ;
+    standard:field >r 0 value latestxt >body r> ;
 
 : begin-structure ( "name" -- struct-sys 0 ) \ facility-ext
     \ Start a structure definition and call it @i{name}
     0 extend-structure ;
 
 : end-structure ( struct-sys +n -- ) \ facility-ext
-    \g end a structure started wioth @code{begin-structure}
+    \g end a structure started with @code{begin-structure}
     swap ! ;
 
 : cfield: ( u1 "name" -- u2 ) \ facility-ext c-field-colon

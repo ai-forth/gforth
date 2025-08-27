@@ -1,7 +1,7 @@
 \ Recognizer extensions
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -28,8 +28,11 @@ fold1: ( xt -- ) >body @ lit, postpone >body postpone + ;
 
 ' >translate-method defer-table to-class: translate-method-to
 
-' >postpone make-latest
+' postponing make-latest
 ' translate-method-to set-to
+
+Create translate-methods
+translator-max-offset# 0 [DO] ' noop , [LOOP]
 
 : translate-method: ( "name" -- ) \ gforth-experimental
     \G create a new translate method, extending the translator table.
@@ -37,22 +40,31 @@ fold1: ( xt -- ) >body @ lit, postpone >body postpone + ;
     \G @var{xt rectype} @code{to} @var{translator}.
     translator-offset translator-max-offset# u>=
     translator-overflow and throw
-    ['] >postpone create-from reveal
+    ['] postponing create-from reveal
+    latestxt translate-methods translator-offset + !
     translator-offset ,  cell +to translator-offset ;
 
-translate-method: >interpret ( translator -- ) \ gforth-experimental
+translate-method: interpreting ( translator -- ) \ gforth-experimental
 \G perform interpreter action of translator
-translate-method: >compile ( translator -- ) \ gforth-experimental
+translate-method: compiling ( translator -- ) \ gforth-experimental
 \G perform compile action of translator
-0 warnings !@ \ we already have this, but this version is better
 \ we already have defined this in the kernel
-\ translate-method: >postpone ( translator -- ) \ gforth-experimental
+\ translate-method: postponing ( translator -- ) \ gforth-experimental
 \ \G perform postpone action of translator
+' postponing translate-methods translator-offset + !
 cell +to translator-offset
-warnings !
 
-: translate-state ( xt -- ) \ gforth-experimental
+: set-state ( xt -- ) \ gforth-experimental
     \G change the current state of the system so that executing
-    \G a translator matches the translate-method passsed as @var{xt}
-    dup >does-code [ ' >postpone >does-code ] Literal <> #-12 and throw
+    \G a translator matches the translate-method passed as @var{xt}
+    dup >does-code [ ' postponing >does-code ] Literal <> #-12 and throw
     >body @ cell/ negate state ! ;
+opt: lits# 1 u>= IF
+	lits> dup >does-code [ ' postponing >does-code ] Literal = IF
+	    >body @ cell/ negate lit, postpone state postpone !  drop  EXIT
+	ELSE  #-12 throw  THEN
+    THEN  :, ;
+
+: get-state ( -- xt ) \ gforth-experimental
+    \G return the currently used translate-method @var{xt}
+    state @ abs cells translate-methods + @ ;

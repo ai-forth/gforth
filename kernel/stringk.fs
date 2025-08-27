@@ -1,7 +1,7 @@
 \ dynamic string handling                              10aug99py
 
 \ Authors: Bernd Paysan, Anton Ertl
-\ Copyright (C) 2000,2005,2007,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2000,2005,2007,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -52,11 +52,11 @@
     [ 6 cells 1- ] Literal + [ -4 cells ] Literal and >pow2 ;
 : $free ( $addr -- ) \ gforth string-free
     \G free the string pointed to by addr, and set addr to 0
-    0 swap !@ ?dup-IF  free throw  THEN ;
+    0 swap atomic!@ ?dup-IF  free throw  THEN ;
 
 : $!buf ( $buf $addr -- ) \ gforth-internal string-store-buf
     \G stores a buffer in a string variable and frees the previous buffer
-    !@ ?dup-IF  free throw  THEN ;
+    atomic!@ ?dup-IF  free throw  THEN ;
 : $make ( addr1 u -- $buf )
     \G create a string buffer as address on stack, which can be stored into
     \G a string variable, internal factor
@@ -96,10 +96,11 @@
     dup $@len 1+ over $!len $@ + 1- c! ;
 
 : $ins ( addr1 u $addr off -- ) \ gforth string-ins
-    \G inserts a string at offset @var{off}.
+    \G Inserts string @var{addr1 u} at offset @var{off} bytes in the
+    \G string @var{$addr}.
     >r 2dup dup $@len under+ $!len  $@ r> safe/string insert ;
-: $del ( addr off u -- ) \ gforth string-del
-    \G deletes @var{u} bytes from a string with offset @var{off}.
+: $del ( $addr off u -- ) \ gforth string-del
+    \G Deletes @var{u} bytes at offset @var{off} bytes in the string @var{$addr}.
     >r >r dup $@ r> safe/string r@ delete
     dup $@len r> - 0 max swap $!len ;
 
@@ -112,7 +113,7 @@
 : $split ( c-addr u char -- c-addr u1 c-addr2 u2 ) \ gforth string-split
     \G Divides a string @i{c-addr u} into two, with @i{char} as
     \G separator.  @i{U1} is the length of the string up to, but
-    \G excluding the first occurence of the separator, @i{c-addr2 u2}
+    \G excluding the first occurrence of the separator, @i{c-addr2 u2}
     \G is the part of the input string behind the separator.  If the
     \G separator does not occur in the string, @i{u1}=@i{u}, @i{u2}=0
     \G and @i{c-addr2}=@i{c-addr}+@i{u}.
@@ -158,19 +159,19 @@
 
 \ auto-save and restore strings in images
 
-: $boot ( $addr -- ) \ gforth string-boot
+: $boot ( $addr -- ) \ gforth-internal string-boot
     \G Take string from dictionary to allocated memory.
     \G Clean dictionary afterwards.
     dup >r $@ 2dup r> dup off $! 0 fill ;
-: $save ( $addr -- ) \ gforth string-save
+: $save ( $addr -- ) \ gforth-internal string-save
     \G push string to dictionary for savesys
     dup >r $@ here r> ! dup , here swap dup aligned allot move ;
-: $[]boot ( addr -- ) \ gforth string-array-boot
+: $[]boot ( addr -- ) \ gforth-internal string-array-boot
     \G take string array from dictionary to allocated memory
     dup $boot  $@ bounds ?DO
 	I $boot
     cell +LOOP ;
-: $[]save ( addr -- ) \ gforth string-array-save
+: $[]save ( addr -- ) \ gforth-internal string-array-save
     \G push string array to dictionary for savesys
     dup $save $@ bounds ?DO
 	I $save
@@ -179,17 +180,17 @@
 AVariable boot$[]  \ strings to be booted
 AVariable boot[][] \ arrays to be booted
 
-: $saved ( addr -- ) \ gforth string-saved
+: $saved ( addr -- ) \ gforth-internal string-saved
     \G mark an address as booted/saved
     boot$[] >stack ;
-: $[]saved ( addr -- ) \ gforth string-array-saved
+: $[]saved ( addr -- ) \ gforth-internal string-array-saved
     \G mark an address as booted/saved
     boot[][] >stack ;
-: $Variable ( -- ) \ gforth string-variable
-    \G A string variable which is preserved across savesystem
+: $Variable ( "name" -- ) \ gforth string-variable
+    \G Defines a string variable whose content is preserved across savesystem
     Create here $saved 0 , ;
-: $[]Variable ( -- ) \ gforth string-array-variable
-    \G A string variable which is preserved across savesystem
+: $[]Variable ( "name" -- ) \ gforth string-array-variable
+    \G Defines a string array variable whose content is preserved across savesystem
     Create here $[]saved 0 , ;
 : boot-strings ( -- )
     boot[][] @ >r

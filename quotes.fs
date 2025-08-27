@@ -1,7 +1,7 @@
 \ quote: S\" and .\" words
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2002,2003,2005,2007,2008,2018,2019,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2002,2003,2005,2007,2008,2018,2019,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -85,23 +85,51 @@ create \-escape-table
     endif
     c, char+ ;
 
-: \"-parse ( "string"<"> -- c-addr u ) \ gforth-internal  backslash-quote-parse
+Variable mlstringpos \ store position of string scan start
+
+:is 'image  mlstringpos $free defers 'image ;
+
+s" End of string expected" exception >r
+
+: singleline-string ( -- never ) \ gforth-experimental
+    \G throw exception when string reaches the end of a line
+    [ r@ ]L throw ;
+
+Defer skip-autoindent ( addr u -- addr' u' )
+
+: (skip-autoindent) ( addr u -- addr' u' )
+    \ skip auto-indent blanks
+    mlstringpos $@ + cell- @
+    0 U+DO  over c@ bl = IF  1 safe/string  THEN  LOOP ;
+
+' (skip-autoindent) is skip-autoindent
+
+: multiline-string ( -- parse-area parse-end ) \ gforth-experimental
+    \G parses multiline strings
+    #lf c,
+    source-id 0= IF
+	success-color ."  string" default-color cr input-color  THEN
+    refill  IF
+	source skip-autoindent
+    ELSE
+	mlstringpos get-stack 2 - -rot 2>r restore-input drop
+	2r> source drop + swap input-lexeme!  [ r> ]L throw  THEN
+    over + ;
+
+: \"-parse ( "string"<"> xt -- c-addr u ) \ gforth-internal  backslash-quote-parse
 \G parses string, translating @code{\}-escapes to characters (as in
 \G C).  The resulting string resides at @code{here}.  See @code{S\"}
 \G for the supported @code{\-escapes}.
-    here >r
+    { xt: string-lineend } here >r
+    save-input input-lexeme 2@ swap source drop - rot 2 + mlstringpos set-stack
     >in @ chars source chars over + >r + begin ( parse-area R: here parse-end )
 	dup r@ u>= IF
-	    #lf c, drop rdrop
-	    source-id 0= IF
-		success-color ."  string" default-color cr
-		input-color  THEN
-	    refill  IF  source  ELSE  [ s" ." over '"' swap c! ] SLiteral drop  THEN
-	    over + >r
+	    drop rdrop string-lineend >r
 	THEN
-	dup c@ '" <> while
+	dup c@ '" <> while \ hardcoded string end, might need hook here
 	    dup c@ dup '\ = if ( parse-area c R: here parse-end )
 		drop char+ dup r@ = abort" unfinished \-escape"
+		\ could also be a C-style multiline string
 		\-escape,
 	    else
 		c, char+
@@ -112,8 +140,8 @@ create \-escape-table
     here r> - dup negate allot
     here swap char/ ;
 
-:noname \"-parse save-mem ;
-:noname \"-parse save-mem 2dup postpone sliteral drop free throw ;
+:noname ['] singleline-string \"-parse save-mem ;
+:noname ['] singleline-string \"-parse save-mem 2dup postpone sliteral drop free throw ;
 interpret/compile: s\" ( Interpretation 'ccc"' -- c-addr u )	\ core-ext,file-ext s-backslash-quote
 \G Interpretation: Parse the string @i{ccc} delimited by a @code{"}
 \G (but not @code{\"}), and convert escaped characters as described
@@ -128,7 +156,7 @@ interpret/compile: s\" ( Interpretation 'ccc"' -- c-addr u )	\ core-ext,file-ext
 \G Run-time @code{( -- c-addr u )}: Push a descriptor for the
 \G resulting string.
 
-:noname \"-parse type ;
+:noname ['] singleline-string \"-parse type ;
 :noname postpone s\" postpone type ;
 interpret/compile: .\" ( compilation 'ccc"' -- ; run-time -- )	\ gforth	dot-backslash-quote
 \G Like @code{."}, but translates C-like \-escape-sequences (see

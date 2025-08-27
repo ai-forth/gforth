@@ -1,6 +1,6 @@
 #!/bin/bash
 #Authors: Bernd Paysan, Anton Ertl
-#Copyright (C) 2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2023 Free Software Foundation, Inc.
+#Copyright (C) 2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2023,2024 Free Software Foundation, Inc.
 
 #This file is part of Gforth.
 
@@ -144,7 +144,7 @@ then
     (cd build/debian/sdcard
      mkdir -p gforth/home gforth/site-forth gforth/current/minos2/fonts
      cp /usr/share/fonts/truetype/emoji/fa-merged-900.ttf gforth/current/minos2/fonts
-     cp `gforth unix/open-url.fs -e '"doc/gforth.txt" fpath file>abspath type bye'` gforth/current/doc
+     #cp `gforth unix/open-url.fs -e '"doc/gforth.txt" fpath file>abspath type bye'` gforth/current/doc
      gforth archive.fs gforth/home/ gforth/site-forth/ $(find gforth/current -type f) $(find gforth/site-forth -type f)) | gzip -9 >res/raw/gforth
     (cd build/debian/sdcard
      rm gforth/$machine/lib*

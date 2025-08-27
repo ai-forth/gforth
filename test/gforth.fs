@@ -1,7 +1,7 @@
 \ test some gforth extension words
 
 \ Authors: Anton Ertl, Bernd Paysan
-\ Copyright (C) 2003,2004,2005,2006,2007,2009,2011,2015,2016,2017,2018,2019,2020,2021,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2003,2004,2005,2006,2007,2009,2011,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -162,39 +162,37 @@ t{ 7 x1 -> 7 22 11 34 17 52 26 13 40 20 10 5 16 8 4 2 1 }t
 
 \ recognizer tests
 
-T{ 4 STACK constant RS -> }T
+T{ 0 recognizer-sequence: RS -> }T
 
-0 warnings !@ \ rectype: is obsolete, will warn
-T{ :noname 1 ;  :noname 2 ;  :noname 3  ; rectype: rectype-1 -> }T
-T{ :noname 10 ; :noname 20 ; :noname 30 ; rectype: rectype-2 -> }T
-warnings !
+T{ :noname 1 ;  :noname 2 ;  :noname 3  ; translate: translate-1 -> }T
+T{ :noname 10 ; :noname 20 ; :noname 30 ; translate: translate-2 -> }T
 
 \ really stupid: 1 character length or 2 characters
-T{ : rec-1 NIP 1 = IF rectype-1 ELSE RECTYPE-NULL THEN ; -> }T
-T{ : rec-2 NIP 2 = IF rectype-2 ELSE RECTYPE-NULL THEN ; -> }T
+T{ : rec-1 NIP 1 = IF ['] translate-1 ELSE 0 THEN ; -> }T
+T{ : rec-2 NIP 2 = IF ['] translate-2 ELSE 0 THEN ; -> }T
 
-T{ rectype-1 RECTYPE>INT EXECUTE  -> 1 }T
-T{ rectype-1 RECTYPE>COMP EXECUTE -> 2 }T
-T{ rectype-1 RECTYPE>POST EXECUTE -> 3 }T
+T{ ' translate-1 interpreting  -> 1 }T
+T{ ' translate-1 compiling     -> 2 }T
+T{ ' translate-1 postponing    -> 3 }T
 
 \ set and get methods
-T{ 0 RS SET-STACK -> }T
-T{ RS GET-STACK -> 0 }T
+T{ 0 ' RS set-recognizer-sequence -> }T
+T{ ' RS get-recognizer-sequence -> 0 }T
 
-T{ ' rec-1 1 RS SET-STACK -> }T
-T{ RS GET-STACK -> ' rec-1 1 }T
+T{ ' rec-1 1 ' RS set-recognizer-sequence -> }T
+T{ ' RS get-recognizer-sequence -> ' rec-1 1 }T
 
-T{ ' rec-1 ' rec-2 2 RS SET-STACK -> }T
-T{ RS GET-STACK -> ' rec-1 ' rec-2 2 }T
+T{ ' rec-1 ' rec-2 2 ' RS set-recognizer-sequence -> }T
+T{ ' RS get-recognizer-sequence -> ' rec-1 ' rec-2 2 }T
 
 \ testing RECOGNIZE
-T{         0 RS SET-STACK -> }T
-T{ S" 1"     RS RECOGNIZE   -> RECTYPE-NULL }T
-T{ ' rec-1 1 RS SET-STACK -> }T
-T{ S" 1"     RS RECOGNIZE   -> RECTYPE-1 }T
-T{ S" 10"    RS RECOGNIZE   -> RECTYPE-NULL }T
-T{ ' rec-2 ' rec-1 2 RS SET-STACK -> }T
-T{ S" 10"    RS RECOGNIZE   -> RECTYPE-2 }T
+T{         0 ' RS set-recognizer-sequence -> }T
+T{ S" 1"     RS   -> 0 }T
+T{ ' rec-1 1 ' RS set-recognizer-sequence -> }T
+T{ S" 1"     RS   -> ' translate-1 }T
+T{ S" 10"    RS   -> 0 }T
+T{ ' rec-2 ' rec-1 2 ' RS set-recognizer-sequence -> }T
+T{ S" 10"    RS   -> ' translate-2 }T
 
 \ extended synonym behaviour
 t{ create coc1 -> }t
@@ -326,6 +324,8 @@ t{ : execute-exit-test {: a :} >r ['] r> execute2 a ; -> }t
 t{ 1 2 execute-exit-test -> 1 2 }t
 
 \ postpone locals
+0 warnings !@ >r
+
 t{ : pl-test1 'a' {: c: l :} postpone l ; immediate -> }t
 t{ : pl-test2 pl-test1 ; -> }t
 t{ pl-test2 -> 'a' }t
@@ -342,16 +342,70 @@ t{ : pl-test9 ['] + {: xt: l :} postpone l ; immediate -> }t
 t{ : pl-testa pl-test9 ; -> }t
 t{ 3 6 pl-testa -> 9 }t
 
+r> warnings !
+
 \ optimized pick and fpick
 t{ : pick-test 4 pick 3 pick 2 pick 1 pick 0 pick ; -> }t
 t{ 5 6 7 8 9 pick-test -> 5 6 7 8 9 5 7 9 7 7 }t
 t{ : fpick-test 4 fpick 3 fpick 2 fpick 1 fpick 0 fpick ; -> }t
 t{ 5e 6e 7e 8e 9e fpick-test -> 5e 6e 7e 8e 9e 5e 7e 9e 7e 7e }t
 
+\ testing standard recongizers
 \ `<word> and ``<word>
 
-t{ `to -> ' to }t
-t{ ``to -> "to" find-name }t
+t{ `needs -> ' needs }t
+t{ ``needs -> "needs" find-name }t
+
+\ more standard recognizers
+: eval-rec ( addr u -- )
+    [: parse-name forth-recognize ;] execute-parsing ;
+: eval-rec-interpret ( addr u -- )
+    [: parse-name forth-recognize interpreting ;] execute-parsing ;
+
+t{ s" needs" forth-recognize -> ``needs `translate-nt }t
+t{ s\" \"a string 123\"" eval-rec -rot s\" \"a" str= -> `scan-translate-string true }t
+t{ s\" \"a string 123\"" eval-rec-interpret s" a string 123" str= -> true }t
+t{ "->#123." forth-recognize -> 0 }t
+t{ "+>123e" forth-recognize -> 0 }t
+t{ "`#123." forth-recognize -> 0 }t
+t{ "``#123." forth-recognize -> 0 }t
+t{ "`123e" forth-recognize -> 0 }t
+t{ "``123e" forth-recognize -> 0 }t
+t{ "${HOME}" forth-recognize -rot "HOME" str= -> `translate-env true }t 
+t{ "${HOME}" eval-rec-interpret s" HOME" getenv str= -> true }t 
+t{ "`xlerb" forth-recognize -> 0 }t
+t{ "``xlerb" forth-recognize -> 0 }t
+t{ "->xlerb" forth-recognize -> 0 }t
+
+0 warnings !@ >r
+: eval-catch ( addr u -- throwcode | results 0 )
+    [{: addr u :}h1 addr u evaluate ;] catch-nobt ;
+r> warnings !
+
+1 Value value1
+2 Varue Varue2
+Defer defer3
+' dup is defer3
+
+t{ "3 ->value1" eval-catch value1 -> 0 3 }t
+t{ "2 +>value1" eval-catch value1 -> 0 5 }t
+\ t{ "'>value1" eval-catch value1 -> -2054 5 }t
+t{ "@>value1" eval-catch value1 -> -21 5 }t
+t{ "3 ->Varue2" eval-catch Varue2 -> 0 3 }t
+t{ "2 +>Varue2" eval-catch Varue2 -> 0 5 }t
+t{ "'>Varue2" eval-catch Varue2 -> <Varue2> 0 5 }t
+t{ "@>Varue2" eval-catch Varue2 -> -21 5 }t
+t{ "@>defer3" eval-catch -> ' dup 0 }t
+t{ "' noop =>defer3" eval-catch @>defer3 -> 0 ' noop }t
+t{ "2 +>defer3" eval-catch @>defer3 -> -21 ' noop }t
+\ t{ "'>defer3" eval-catch @>defer3 -> -2054 ' noop }t
+
+\ tests for non-existing words
+
+T{ ' ' catch xlerb -> -13 }T
+T{ s" xlerb" find-name -> 0 }T
+
+T{ s" 3 to xlerb" eval-catch -> -13 }T
 
 \ division words
 
@@ -454,6 +508,7 @@ t{ :noname -20 -3 /modf ; execute ->  -2 6 }t
 
 \ t{ 1 2 3 homeloc >r @ swap @ rot @ r> free -> 1 2 3 0 }t
 
+0 warnings !@ >r
 : combiner [{: a b xt: do-it | c :}h1 a b do-it ;] ;
 
 t{ 1 2 ' + combiner execute -> 3 }t
@@ -467,6 +522,7 @@ t{ 0 0 ' + combiner #1234 #5678 third >body 2! execute -> #6912 }t
 	    k @ B @ x1 x2 x3 x4 A ;] dup B !
 	execute  THEN ;
 : man-or-boy? ( n -- n' ) [: 1 ;] [: -1 ;] 2dup swap [: 0 ;] A ;
+r> warnings !
 
 t{ 0 man-or-boy? -> 1 }t
 t{ 1 man-or-boy? -> 0 }t
@@ -528,7 +584,9 @@ t{ : test-mem-0 array>mem mem-do i @ loop ; -> }
 t{ test-mem*a 4 cell test-mem-0 -> -3 1 5 3 }t
 t{ test-mem*a 1 cell test-mem-0 -> 3 }t
 t{ test-mem*a 0 cell test-mem-0 -> }t
+0 warnings !@ >r
 t{ : test-mem-l 1 {: a :} array>mem mem-do 2 {: b :} i @ loop a ; -> }
+r> warnings !
 t{ test-mem*a 4 cell test-mem-l -> -3 1 5 3 1 }t
 
 \ -[do u-[do
@@ -550,6 +608,24 @@ t{ max-n 1+ max-n u-[do-test -> }t
     3 rpick 2 rpick 1 rpick 0 rpick
     rdrop rdrop rdrop rdrop ;
 t{ 1 2 3 4 t-rpick -> 4 3 2 1 }t
+
+\ extra-section
+
+t{ 1 extra-section t-extra-section -> }t
+t{ ' unused t-extra-section 1 pagesize within -> true }t
+t{ ' unused t-extra-section ' allot ' t-extra-section catch -> 0 }t
+t{ 1 ' allot ' t-extra-section catch nip nip -> -8 }t
+
+\ refill test with different newlines
+
+: refill-tester ( n -- addr u )
+    [: 0 ?DO  refill drop source type ." /"  LOOP  refill drop ;] $tmp ;
+
+t{ 4 refill-tester
+ab
+cde
+fghijklmn
+s" ab/cde/fghi/jklmn/" str= -> true }t
 
 \ refill with&without newline at end of last line
 \ (do not add a newline to the end of this buffer!)

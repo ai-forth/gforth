@@ -1,7 +1,7 @@
 \ OpenSLES audio driver
 
 \ Authors: Bernd Paysan
-\ Copyright (C) 2020,2022,2023 Free Software Foundation, Inc.
+\ Copyright (C) 2020,2022,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -314,7 +314,6 @@ Variable stream-bufs<>
 set-current
 previous opensles
 
-0 warnings !@
-: bye ( -- )
-    destroy-player destroy-recorder destroy-mix destroy-engine  bye ;
-warnings !
+:is bye ( -- )
+    destroy-player destroy-recorder destroy-mix destroy-engine
+    defers bye ;

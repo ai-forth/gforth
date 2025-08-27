@@ -1,7 +1,7 @@
 \ LOOK.FS      xt -> lfa                               22may93jaw
 
 \ Authors: Anton Ertl, Bernd Paysan, Jens Wilke
-\ Copyright (C) 1995,1996,1997,2000,2003,2007,2011,2012,2013,2014,2015,2017,2019,2021,2023 Free Software Foundation, Inc.
+\ Copyright (C) 1995,1996,1997,2000,2003,2007,2011,2012,2013,2014,2015,2017,2019,2021,2023,2024 Free Software Foundation, Inc.
 
 \ This file is part of Gforth.
 
@@ -111,12 +111,13 @@ has? rom
 [THEN]
 
 : >name ( xt -- nt|0 ) \ gforth to-name
-    \G The primary name token @i{nt} of the word represented by
+    \G @i{nt} is the primary name token of the word represented by
     \G @i{xt}.  Returns 0 if @i{xt} is not an xt (using a heuristic
     \G check that has a small chance of misidentifying a non-xt as
-    \G xt), or if the primary nt is of an unnamed word.  As of Gforth
-    \G 1.0, every xt has a primary nt, but other named words may have
-    \G the same interpretation sematics xt.
+    \G xt), or (before Gforth 1.0) if the primary nt is of an unnamed
+    \G word.  As of Gforth 1.0, every xt has a primary nt.  Several
+    \G words can have the same xt, but only one of them has the
+    \G primary nt of that xt.
     look and ;
 
 : threaded>name ( ca -- nt|0 )
@@ -147,9 +148,7 @@ has? rom
 	    THEN
 	LOOP ;
     : .recognizers ( -- ) \ gforth-experimental dot-recognizers
-        \G Print the current recognizer order, with the first-searched
-	\G recognizer leftmost (unlike .order).  The inverted @code{~} is
-	\G displayed instead of @code{rec-}, which is the common prefix
-	\G of all recognizers.
+        \G Print the system recognizer order, with the first-searched
+	\G recognizer leftmost.
 	['] forth-recognize .recognizer-sequence ;
 [THEN]
