@@ -55,6 +55,20 @@ version has been tested successfully on the following platforms:
   * amd64
   * i386
 
+## Build source
+
+Use the following sequence to build sources:
+
+```
+git clone https://github.com/ai-forth/gforth
+cd gforth
+./install-deps.sh
+./autogen.sh
+./configure
+make
+sudo make install
+```
+
 ## Installation
 
 Read `INSTALL` for installation instructions from tarball,\
